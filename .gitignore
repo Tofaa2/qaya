@@ -1,0 +1,6 @@
+zig-out
+.zig-cache
+zig-pkg
+*.o
+root
+sandbox/assets/

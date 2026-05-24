@@ -1,0 +1,23 @@
+.{
+    .name = .qaya,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "README.md",
+        "LICENSE",
+        "core",
+        "sandbox",
+    },
+    .dependencies = .{
+        .zbgfx = .{
+            .url = "git+https://github.com/cyberegoorg/zbgfx/#1b4b2a4e9f3a79d099f7fdd80ead56aebe1b4a0e",
+            .hash = "zbgfx-0.12.0-Sm4IxEuHywb45XqoIhv3iEOxKXc01aKNNVjI63FHvqFw",
+        },
+        .luajit = .{
+            .url = "git+https://github.com/sackosoft/zig-luajit#11887ffa5b03788c05d23e64f2aafb20b645570a",
+            .hash = "luajit-3.0.0-nMGF0vfCAwBfUsknnnrxFWEDZ4G6sOgppH6DGzWgn7fV",
+        },
+    },
+
+    .fingerprint = 0x7f9a2a8394772a8e,
+}
