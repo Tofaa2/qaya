@@ -2,13 +2,14 @@
 
 A data-driven, modular application framework and game engine in Zig.
 
+![](.github/assets/pbr.png)
+
 ## Core Concepts
 
 **Everything is data.** Qaya doesn't have game objects. It has entities -- lightweight handles that carry components (plain structs). Systems iterate over those components and mutate them. This is the Entity Component System pattern, and it runs through everything.
 
 **Components are any struct type.** No registration, no macros, no boilerplate. Component IDs are derived at comptime from `@typeName` using Fnv1a-64, mapped to 2048-bit masks. Collisions are detected at runtime in debug builds.
 
-![](.github/assets/pbr.png)
 
 ```zig
 const Velocity = struct { x: f32, y: f32 };
