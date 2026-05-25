@@ -16,12 +16,16 @@ const LightUniforms = struct {
     light_counts: bgfx.UniformHandle,
     light_pos: bgfx.UniformHandle,
     light_pos_color: bgfx.UniformHandle,
+    s_env_map: bgfx.UniformHandle,
+    u_env_intensity: bgfx.UniformHandle,
 };
 
 const FallbackResources = struct {
     white_texture: bgfx.TextureHandle,
     s_tex_color: bgfx.UniformHandle,
 };
+
+const RenderEncoder = @import("../RenderEncoder.zig").RenderEncoder;
 
 pub const Plugin = struct {
     pub const api = renderer;
@@ -30,7 +34,9 @@ pub const Plugin = struct {
     pub fn build(_: *const Plugin, app: *App) void {
         app.world.scheduler.add(.init, init) catch unreachable;
         app.world.scheduler.add(.update, cameraControl) catch unreachable;
-        app.world.scheduler.add(.render, render) catch unreachable;
+        app.world.scheduler.add(.render, prepareRenderViews) catch unreachable;
+        app.world.scheduler.add(.render, renderSkybox) catch unreachable;
+        app.world.scheduler.add(.render, renderPbrMeshes) catch unreachable;
         app.world.scheduler.add(.present, present) catch unreachable;
         app.world.addEventSystem(events.WindowResize, handleResize);
     }
@@ -47,6 +53,7 @@ pub const Plugin = struct {
             .nwh = ptr,
             .width = @intCast(size[0]),
             .debug = true,
+            .aa_mode = .msaa4x,
         }) catch unreachable);
         world.insertResource(renderer.State.init(world.allocator));
         world.insertResource(renderer.Program.Pool.init(world.allocator, world.io));
@@ -72,6 +79,8 @@ pub const Plugin = struct {
             .light_counts = store.create("u_lightCounts", .vec4),
             .light_pos = store.createN("u_lightPos", .vec4, 4),
             .light_pos_color = store.createN("u_lightPosColor", .vec4, 4),
+            .s_env_map = store.create("s_envMap", .sampler),
+            .u_env_intensity = store.create("u_envIntensity", .vec4),
         });
 
         // Create a 1x1 white fallback texture so untextured materials don't sample garbage
@@ -138,8 +147,39 @@ pub const Plugin = struct {
         }
     }
 
-    fn render(
+    fn prepareRenderViews(
         state_res: ecs.ResMut(renderer.State),
+        cameras: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
+    ) void {
+        const state = state_res.value;
+        var cam_it = cameras.iter();
+        if (cam_it.next()) |cam| {
+            var view = state.getView(.@"3d");
+            view.camera = cam.Camera.*;
+        }
+        state.enableView(.@"3d");
+        state.enableView(.@"2d");
+        state.refreshActiveViews();
+    }
+
+    fn renderSkybox(
+        enc_param: RenderEncoder(),
+        cameras: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
+        skybox: ecs.Res(renderer.Skybox),
+        env_map: ecs.Res(renderer.EnvironmentMap),
+    ) void {
+        const enc = enc_param.value;
+        if (env_map.value.texture.idx != std.math.maxInt(u16)) {
+            if (cameras.first()) |cam| {
+                skybox.value.render(enc, env_map.value, @intFromEnum(renderer.View.Id.@"3d"), cam.Camera.position());
+            }
+        } else {
+            log.warn("No environment map available — skybox will not be rendered", .{});
+        }
+    }
+
+    fn renderPbrMeshes(
+        enc_param: RenderEncoder(),
         program_pool: ecs.ResMut(renderer.Program.Pool),
         mesh_pool: ecs.ResMut(renderer.Mesh.Pool),
         mat_pool: ecs.ResMut(renderer.Material.Pool),
@@ -151,29 +191,10 @@ pub const Plugin = struct {
         meshes: ecs.Query(.{ *comp.MeshComponent, *comp.Transform, *comp.RenderVisible }),
         lights: ecs.Query(.{ *comp.Light }),
         point_lights: ecs.Query(.{ *comp.Transform, *comp.Light }),
-        skybox: ecs.Res(renderer.Skybox),
         env_map: ecs.Res(renderer.EnvironmentMap),
     ) void {
-        var enc = renderer.Encoder.init();
-        defer enc.deinit();
-
-        const state = state_res.value;
+        const enc = enc_param.value;
         const lu = light_uniforms.value;
-
-        var camera_pos: [4]f32 = .{ 0, 0, 0, 0 };
-
-        var cam_it = cameras.iter();
-        if (cam_it.next()) |cam| {
-            const pos = cam.Camera.position();
-            camera_pos = .{ pos.x, pos.y, pos.z, 0 };
-            var view = state.getView(.@"3d");
-            view.camera = cam.Camera.*;
-            view.refresh();
-        }
-
-        state.enableView(.@"3d");
-        state.enableView(.@"2d");
-        state.refreshActiveViews();
 
         // --- Collect point lights (entities with both Transform and Light) ---
         var pt_pos: [4][4]f32 = .{.{ 0, 0, 0, 0 }} ** 4;
@@ -198,7 +219,7 @@ pub const Plugin = struct {
         var has_dir: f32 = 0;
         var dir_dir: [4]f32 = .{ 0, 0, 0, 0 };
         var dir_color: [4]f32 = .{ 0, 0, 0, 0 };
-        var ambient: [4]f32 = .{ 0.7, 0.6, 0.5, 1.0 };
+        var ambient: [4]f32 = .{ 0.8, 0.85, 1.0, 1.0 };
 
         var light_it = lights.iter();
         while (light_it.next()) |row| {
@@ -219,20 +240,10 @@ pub const Plugin = struct {
             }
         }
 
-        enc.setUniform(lu.light_dir, &dir_dir, 1);
-        enc.setUniform(lu.light_color, &dir_color, 1);
-        enc.setUniform(lu.ambient_color, &ambient, 1);
-        enc.setUniform(lu.camera_pos, &camera_pos, 1);
-        const counts = [_]f32{ @floatFromInt(num_pt), has_dir, 0, 0 };
-        enc.setUniform(lu.light_counts, &counts, 1);
-        enc.setUniform(lu.light_pos, &pt_pos, 4);
-        enc.setUniform(lu.light_pos_color, &pt_color, 4);
-
-        // Skybox (renders first in 3D view, before any meshes)
-        if (env_map.value.texture.idx != std.math.maxInt(u16)) {
-            if (cameras.first()) |cam| {
-                skybox.value.render(enc, env_map.value, @intFromEnum(renderer.View.Id.@"3d"), cam.Camera.position());
-            }
+        var camera_pos: [4]f32 = .{ 0, 0, 0, 0 };
+        if (cameras.first()) |cam| {
+            const pos = cam.Camera.position();
+            camera_pos = .{ pos.x, pos.y, pos.z, 0 };
         }
 
         var mesh_it = meshes.iter();
@@ -250,15 +261,31 @@ pub const Plugin = struct {
             const program = program_pool.value.get(mat.program) orelse continue;
             const model = row.Transform.toMatrixMat4();
 
+            // Set transform for current draw call
             enc.setTransform(&model);
+
+            // BGFX is stateless between submit calls; we MUST bind global light and env map uniforms on the encoder for EVERY mesh draw call.
+            enc.setUniform(lu.light_dir, &dir_dir, 1);
+            enc.setUniform(lu.light_color, &dir_color, 1);
+            enc.setUniform(lu.ambient_color, &ambient, 1);
+            enc.setUniform(lu.camera_pos, &camera_pos, 1);
+            const counts = [_]f32{ @floatFromInt(num_pt), has_dir, 0, 0 };
+            enc.setUniform(lu.light_counts, &counts, 1);
+            enc.setUniform(lu.light_pos, &pt_pos, 4);
+            enc.setUniform(lu.light_pos_color, &pt_color, 4);
+
+            if (env_map.value.texture.idx != std.math.maxInt(u16)) {
+                enc.setTexture(0, lu.s_env_map, env_map.value.texture, std.math.maxInt(u32));
+                const env_intensity = [_]f32{ env_map.value.intensity, 0, 0, 0 };
+                enc.setUniform(lu.u_env_intensity, &env_intensity, 1);
+            }
+
             enc.submitMaterial(mat);
             enc.setVertexBuffer(0, mesh.vb, 0, mesh.vertex_count);
             enc.setIndexBuffer(mesh.ib, 0, mesh.index_count);
             enc.setState(bgfx.StateFlags_Default, 0);
             enc.submit(@intFromEnum(renderer.View.Id.@"3d"), program.handle, 0, 0xff);
         }
-
-        // TODO: user will implement 2D overlay / text rendering here
     }
 
     fn present(dev: ecs.ResMut(renderer.Device), state_res: ecs.ResMut(renderer.State)) void {

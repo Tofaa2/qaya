@@ -16,6 +16,7 @@ program: Program.Handle,
 uniforms: std.AutoArrayHashMapUnmanaged(UniformStore.UniformHandle, Data),
 allocator: std.mem.Allocator = undefined,
 info: Info,
+baked: bool = false,
 
 pub const Info = union(enum) {
     custom: CustomInfo,
@@ -40,7 +41,6 @@ pub const Info = union(enum) {
         base_color: math.Color = .white,
         metallic: f32 = 0.0,
         roughness: f32 = 0.5,
-        environment_texture: ?[:0]const u8 = null,
     };
 
     pub const BasicInfo = struct {};
@@ -68,6 +68,7 @@ pub fn init(info: *const Info) Error!Material {
             .program = undefined,
             .uniforms = .empty,
             .info = info.*,
+            .baked = false,
         },
     };
 }
@@ -79,7 +80,7 @@ pub fn deinit(self: *Material) void {
 pub fn needsBake(self: *const Material) bool {
     return switch (self.info) {
         .custom => false,
-        .lit, .pbr, .basic => true,
+        .lit, .pbr, .basic => !self.baked,
     };
 }
 
@@ -118,9 +119,9 @@ pub fn bakeWithFallback(self: *Material, program_pool: *Program.Pool, uniform_st
             if (self.info.pbr.base_color_texture) |path| {
                 const tex_handle = try texture_pool.load(&.{ .file = .{ .path = path } });
                 const tex = texture_pool.get(tex_handle) orelse return error.TextureNotFound;
-                try self.uniforms.put(self.allocator, sampler, .{ .sampler = .{ .texture = tex.handle, .flags = 0, .stage = 0 } });
+                try self.uniforms.put(self.allocator, sampler, .{ .sampler = .{ .texture = tex.handle, .flags = 0, .stage = 1 } });
             } else if (fallback_texture) |ft| {
-                try self.uniforms.put(self.allocator, sampler, .{ .sampler = .{ .texture = ft, .flags = 0, .stage = 0 } });
+                try self.uniforms.put(self.allocator, sampler, .{ .sampler = .{ .texture = ft, .flags = 0, .stage = 1 } });
             }
 
             const bc = self.info.pbr.base_color;
@@ -129,27 +130,13 @@ pub fn bakeWithFallback(self: *Material, program_pool: *Program.Pool, uniform_st
 
             const props = uniform_store.create("u_metallicRoughness", .vec4);
             try self.uniforms.put(self.allocator, props, .{ .vec4 = math.Vec4.init(self.info.pbr.metallic, self.info.pbr.roughness, 0, 0) });
-
-            const env_sampler = uniform_store.create("s_envMap", .sampler);
-            const env_intensity = uniform_store.create("u_envIntensity", .vec4);
-            if (self.info.pbr.environment_texture) |path| {
-                const is_hdr = std.ascii.endsWithIgnoreCase(path, ".hdr");
-                const tex_handle = try texture_pool.load(if (is_hdr) &.{ .hdr_file = .{ .path = path } } else &.{ .file = .{ .path = path } });
-                const tex = texture_pool.get(tex_handle) orelse return error.TextureNotFound;
-                try self.uniforms.put(self.allocator, env_sampler, .{ .sampler = .{ .texture = tex.handle, .flags = 0, .stage = 1 } });
-                try self.uniforms.put(self.allocator, env_intensity, .{ .vec4 = math.Vec4.init(1.0, 0, 0, 1.0) });
-            } else {
-                if (fallback_texture) |ft| {
-                    try self.uniforms.put(self.allocator, env_sampler, .{ .sampler = .{ .texture = ft, .flags = 0, .stage = 1 } });
-                }
-                try self.uniforms.put(self.allocator, env_intensity, .{ .vec4 = math.Vec4.init(1.0, 0, 0, 0.0) });
-            }
         },
         .basic => {
             const program = try program_pool.load(&Program.Info.initBuiltin(builtin.fs_basic, builtin.vs_basic));
             self.program = program;
         },
     }
+    self.baked = true;
 }
 
 pub const Error = error{};

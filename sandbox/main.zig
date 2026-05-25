@@ -12,11 +12,11 @@ pub fn main(init: std.process.Init) !void {
     try app.addPlugins(qaya.plugins.Defaults);
     try app.addSystem(.post_init, spawnPlayer);
     try app.addSystem(.post_init, spawnEnvironmentMap);
-    try app.addSystem(.post_init, spawnCube);
-    try app.addSystem(.post_init, spawnSphere);
     try app.addSystem(.post_init, spawnGround);
+    try app.addSystem(.post_init, spawnBalls);
     try app.addSystem(.post_init, spawnDirLight);
     try app.addSystem(.post_update, lockMouse);
+    try app.addSystem(.post_update, orbitLight);
     app.run();
 }
 
@@ -50,64 +50,23 @@ fn lockMouse(
     }
 }
 
-fn spawnCube(
-    world: *ecs.World,
-    mesh_pool: ecs.ResMut(qaya.rendering.Mesh.Pool),
-    mat_pool: ecs.ResMut(qaya.rendering.Material.Pool),
-) !void {
-    const mesh = try mesh_pool.value.load(&.{ .lit_cube = {} });
-    const mat = try mat_pool.value.load(&.{ .pbr = .{
-        .base_color_texture = "sandbox/assets/shinoa.png",
-        .roughness = 0.3,
-        .metallic = 0.1,
-    } });
-    _ = try world.spawn(qaya.bundles.PbrBundle{
-        .mesh_component = .{ .value = mesh, .material = mat },
-        .transform = .{ .position = .init(-2.5, 1.5, 0) },
-    });
-}
-
-fn spawnSphere(
-    world: *ecs.World,
-    mesh_pool: ecs.ResMut(qaya.rendering.Mesh.Pool),
-    mat_pool: ecs.ResMut(qaya.rendering.Material.Pool),
-) !void {
-    const mesh = try mesh_pool.value.load(&.{ .lit_sphere = .{ .radius = 1.0, .segments = 32 } });
-    const mat = try mat_pool.value.load(&.{ .pbr = .{
-        .base_color = math.Color{ .r = 255, .g = 215, .b = 0, .a = 255 },
-        .metallic = 0.95,
-        .roughness = 0.1,
-        .environment_texture = "sandbox/assets/818-hdri-skies-com/818-hdri-skies-com.hdr",
-    } });
-    _ = try world.spawn(qaya.bundles.PbrBundle{
-        .mesh_component = .{ .value = mesh, .material = mat },
-        .transform = .{ .position = .init(2.5, 1.5, 0) },
-    });
-}
-
-fn spawnGround(
-    world: *ecs.World,
-    mesh_pool: ecs.ResMut(qaya.rendering.Mesh.Pool),
-    mat_pool: ecs.ResMut(qaya.rendering.Material.Pool),
-) !void {
-    const mesh = try mesh_pool.value.load(&.{ .plane = .{ .width = 20, .depth = 20 } });
-    const mat = try mat_pool.value.load(&.{ .pbr = .{
-        .base_color = math.Color{ .r = 50, .g = 50, .b = 55, .a = 255 },
-        .roughness = 0.9,
-    } });
-    _ = try world.spawn(qaya.bundles.PbrBundle{
-        .mesh_component = .{ .value = mesh, .material = mat },
-        .transform = .{ .position = .init(0, 0, 0) },
+fn spawnPlayer(world: *ecs.World) !void {
+    _ = try world.spawn(qaya.bundles.CameraBundle{
+        .camera = qaya.components.Camera.fps(.init(0, 4, 12), .zero(), 16.0 / 9.0),
     });
 }
 
 fn spawnEnvironmentMap(
     world: *ecs.World,
     tex_pool: ecs.ResMut(qaya.rendering.Texture.Pool),
-) !void {
-    const info: qaya.rendering.Texture.Info = .{ .hdr_file = .{ .path = "818-hdri-skies-com/818-hdri-skies-com.hdr" } };
-    const handle = try tex_pool.value.load(&info);
-    const tex = tex_pool.value.get(handle).?;
+) void {
+    const env_hdr = "sandbox/assets/skybox.hdr";
+    const info: qaya.rendering.Texture.Info = .{ .hdr_file = .{ .path = env_hdr } };
+    const handle = tex_pool.value.load(&info) catch |err| {
+        std.log.err("Failed to load environment map: {s}", .{@errorName(err)});
+        return;
+    };
+    const tex = tex_pool.value.get(handle) orelse return;
     if (world.getMutResource(qaya.rendering.EnvironmentMap)) |env| {
         env.* = qaya.rendering.EnvironmentMap{
             .texture = tex.handle,
@@ -116,18 +75,97 @@ fn spawnEnvironmentMap(
     }
 }
 
-fn spawnPlayer(world: *ecs.World) !void {
-    _ = try world.spawn(qaya.bundles.CameraBundle{
-        .camera = qaya.components.Camera.fps(.init(0, 3.5, 7), .zero(), 16.0 / 9.0),
+fn spawnGround(
+    world: *ecs.World,
+    mesh_pool: ecs.ResMut(qaya.rendering.Mesh.Pool),
+    mat_pool: ecs.ResMut(qaya.rendering.Material.Pool),
+) !void {
+    const mesh = try mesh_pool.value.load(&.{ .plane = .{ .width = 30, .depth = 20 } });
+    const mat = try mat_pool.value.load(&.{ .pbr = .{
+        .base_color = math.Color{ .r = 60, .g = 62, .b = 68, .a = 255 },
+        .roughness = 0.95,
+        .metallic = 0.0,
+    } });
+    _ = try world.spawn(qaya.bundles.PbrBundle{
+        .mesh_component = .{ .value = mesh, .material = mat },
+        .transform = .{ .position = .init(0, 0, 0) },
     });
 }
 
+const BallConfig = struct {
+    name: []const u8,
+    color: math.Color,
+    metallic: f32,
+    roughness: f32,
+    texture: ?[:0]const u8 = null,
+};
+
+fn spawnBalls(
+    world: *ecs.World,
+    mesh_pool: ecs.ResMut(qaya.rendering.Mesh.Pool),
+    mat_pool: ecs.ResMut(qaya.rendering.Material.Pool),
+) !void {
+    const mesh = try mesh_pool.value.load(&.{ .lit_sphere = .{ .radius = 0.5, .segments = 32 } });
+
+    const balls = [_]BallConfig{
+        .{ .name = "Red Plastic", .color = .{ .r = 220, .g = 40, .b = 40, .a = 255 }, .metallic = 0.0, .roughness = 0.5 },
+        .{ .name = "Blue Plastic", .color = .{ .r = 40, .g = 80, .b = 220, .a = 255 }, .metallic = 0.0, .roughness = 0.3 },
+        .{ .name = "Green Plastic", .color = .{ .r = 40, .g = 180, .b = 60, .a = 255 }, .metallic = 0.0, .roughness = 0.7 },
+        .{ .name = "White Ceramic", .color = .{ .r = 230, .g = 230, .b = 230, .a = 255 }, .metallic = 0.0, .roughness = 0.1 },
+        .{ .name = "Brushed Steel", .color = .{ .r = 180, .g = 180, .b = 190, .a = 255 }, .metallic = 0.7, .roughness = 0.55 },
+        .{ .name = "Copper", .color = .{ .r = 220, .g = 120, .b = 70, .a = 255 }, .metallic = 0.9, .roughness = 0.35 },
+        .{ .name = "Gold Rough", .color = .{ .r = 255, .g = 200, .b = 50, .a = 255 }, .metallic = 1.0, .roughness = 0.6 },
+        .{ .name = "Gold Smooth", .color = .{ .r = 255, .g = 200, .b = 50, .a = 255 }, .metallic = 1.0, .roughness = 0.15 },
+        .{ .name = "Chrome Rough", .color = .{ .r = 200, .g = 200, .b = 210, .a = 255 }, .metallic = 1.0, .roughness = 0.5 },
+        .{ .name = "Chrome Mirror", .color = .{ .r = 200, .g = 200, .b = 210, .a = 255 }, .metallic = 1.0, .roughness = 0.05 },
+    };
+
+    const count = balls.len;
+    const spacing = 1.5;
+    const start_x = -@as(f32, @floatFromInt(count - 1)) * spacing / 2.0;
+
+    for (balls, 0..) |ball, i| {
+        const x: f32 = start_x + @as(f32, @floatFromInt(i)) * spacing;
+        const mat = try mat_pool.value.load(&.{ .pbr = .{
+            .base_color = ball.color,
+            .base_color_texture = ball.texture,
+            .metallic = ball.metallic,
+            .roughness = ball.roughness,
+        } });
+        _ = try world.spawn(qaya.bundles.PbrBundle{
+            .mesh_component = .{ .value = mesh, .material = mat },
+            .transform = .{ .position = .init(x, 0.55, 0) },
+        });
+        std.log.info("Spawned ball: {s} at x={d:.1}", .{ ball.name, x });
+    }
+}
 fn spawnDirLight(world: *ecs.World) !void {
-    _ = try world.spawn(qaya.bundles.LightBundle{
-        .light = .{
+    _ = try world.spawn(.{
+        qaya.components.Light{
             .direction = .init(-1, -2, -1),
             .color = math.Color.white,
-            .intensity = 0.8,
+            .intensity = 1.5,
         },
     });
+}
+
+var orbit_angle: f32 = 0.0;
+
+fn orbitLight(
+    time: ecs.Res(qaya.resources.Time),
+    lights: ecs.Query(.{*qaya.components.Light}),
+) void {
+    const dt = time.value.delta;
+    const speed = 0.6; // radians per second
+    orbit_angle += dt * speed;
+
+    const radius = 4.0;
+    const height = -2.0;
+    const dx = @cos(orbit_angle) * radius;
+    const dz = @sin(orbit_angle) * radius;
+
+    var it = lights.iter();
+    while (it.next()) |row| {
+        row.Light.direction = .init(dx, height, dz);
+    }
 }

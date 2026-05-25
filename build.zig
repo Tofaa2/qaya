@@ -222,6 +222,7 @@ fn createLib(opts: LibCreateOptions) *Compile {
             .root_module = lib.root_module,
             .name = opts.module.name,
         });
+        tests.use_llvm = true;
         const run = b.addRunArtifact(tests);
         ts.dependOn(&run.step);
     }
@@ -275,6 +276,7 @@ fn createModule(opts: ModuleCreateOptions) *Module {
             .root_module = mod,
             .name = opts.name,
         });
+        tests.use_llvm = true;
         const run_unit_tests = opts.b.addRunArtifact(tests);
         test_step.dependOn(&run_unit_tests.step);
     }

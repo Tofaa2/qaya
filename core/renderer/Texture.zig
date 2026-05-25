@@ -69,7 +69,7 @@ fn loadHdrFile(path: [:0]const u8) Error!Texture {
     const num_pixels = w * h;
     const byte_len = num_pixels * 4 * @sizeOf(f32);
 
-    const flags = SamplerFlags.u_clamp | SamplerFlags.v_clamp | SamplerFlags.min_point | SamplerFlags.mag_point;
+    const flags = SamplerFlags.u_clamp | SamplerFlags.v_clamp;
     const mem = bgfx.copy(@ptrCast(hdr.data), @intCast(byte_len));
     const handle = bgfx.createTexture2D(
         @intCast(w),
