@@ -8,6 +8,8 @@ A data-driven, modular application framework and game engine in Zig.
 
 **Components are any struct type.** No registration, no macros, no boilerplate. Component IDs are derived at comptime from `@typeName` using Fnv1a-64, mapped to 2048-bit masks. Collisions are detected at runtime in debug builds.
 
+![](.github/assets/pbr.png)
+
 ```zig
 const Velocity = struct { x: f32, y: f32 };
 const Position = struct { x: f32, y: f32 };
