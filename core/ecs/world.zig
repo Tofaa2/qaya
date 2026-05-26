@@ -8,6 +8,7 @@ const ResourcePool = @import("ResourcePool.zig");
 const EventChannel = @import("EventChannel.zig").EventChannel;
 const schedule = @import("schedule.zig");
 const EventSystemRegistry = @import("EventSystem.zig").EventSystemRegistry;
+const hooks_mod = @import("hooks.zig");
 
 pub const World = struct {
     const Self = @This();
@@ -196,14 +197,31 @@ pub const World = struct {
         }
     }
 
+    pub fn triggerAddHook(self: *Self, comptime T: type, e: Entity) void {
+        if (self.resources.get(hooks_mod.ComponentHooks)) |hooks| {
+            if (hooks.on_add.get(registry.id(T))) |hook| {
+                hook(self, e);
+            }
+        }
+    }
+
+    pub fn triggerRemoveHook(self: *Self, comptime T: type, e: Entity) void {
+        if (self.resources.get(hooks_mod.ComponentHooks)) |hooks| {
+            if (hooks.on_remove.get(registry.id(T))) |hook| {
+                hook(self, e);
+            }
+        }
+    }
+
     pub fn addComponent(self: *Self, e: Entity, comptime T: type, value: T) !void {
-        self.lock();
-        defer self.unlock();
         if (!self.isAlive(e)) return error.DeadEntity;
 
         if (comptime std.debug.runtime_safety) {
             self.collision_guard.check(T);
         }
+
+        self.lock();
+        defer self.unlock();
 
         const slot = &self.entities.items[e.index];
         const old_arch_id = slot.archetype;
@@ -239,6 +257,8 @@ pub const World = struct {
 
         slot.archetype = new_arch_id;
         slot.row = @intCast(new_row);
+
+        self.triggerAddHook(T, e);
     }
 
     pub fn addComponents(self: *Self, e: Entity, values: anytype) !void {
@@ -292,6 +312,10 @@ pub const World = struct {
         slot.archetype = new_arch_id;
         slot.row = @intCast(new_row);
         self.migration_cache.valid = false; // Invalidate cache for complex mutations
+
+        inline for (std.meta.fields(V)) |field| {
+            self.triggerAddHook(field.type, e);
+        }
     }
 
     pub fn removeComponent(self: *Self, e: Entity, comptime T: type) !void {
@@ -325,6 +349,8 @@ pub const World = struct {
 
         slot.archetype = new_arch_id;
         slot.row = @intCast(self.archetypes.items[new_arch_id].entities.items.len - 1);
+
+        self.triggerRemoveHook(T, e);
     }
 
     pub fn removeComponents(self: *Self, e: Entity, comptime types: []const type) !void {
@@ -353,6 +379,10 @@ pub const World = struct {
 
         slot.archetype = new_arch_id;
         slot.row = @intCast(self.archetypes.items[new_arch_id].entities.items.len - 1);
+
+        inline for (types) |T| {
+            self.triggerRemoveHook(T, e);
+        }
     }
 
     pub fn emit(self: *Self, event: anytype) void {

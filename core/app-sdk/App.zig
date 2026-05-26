@@ -2,6 +2,7 @@ const std = @import("std");
 const ecs = @import("ecs");
 const plugin = @import("plugin.zig");
 const events = @import("events.zig");
+const state_module = @import("state.zig");
 const log = std.log.scoped(.App);
 const App = @This();
 
@@ -25,6 +26,7 @@ pub fn run(self: *App) void {
 
     while (self.running) {
         self.world.tickEvents();
+        self.runStage(.state_transition);
 
         self.runStage(.pre_update);
         self.runStage(.update);
@@ -99,4 +101,10 @@ pub fn addPlugins(self: *App, comptime plugins: []const type) !void {
 
 pub fn addSystem(self: *App, stage: anytype, comptime f: anytype) !void {
     try self.world.scheduler.add(stage, f);
+}
+
+pub fn addStatePlugin(self: *App, comptime T: type, initial: T) !void {
+    self.world.insertResource(state_module.State(T){ .current = initial });
+    self.world.registerEvent(state_module.NextState(T));
+    try self.world.scheduler.add(.state_transition, state_module.transitionSystem(T));
 }

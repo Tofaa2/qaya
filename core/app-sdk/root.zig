@@ -12,6 +12,8 @@ pub const resources = @import("resources/root.zig");
 
 pub const bundles = @import("bundles/root.zig");
 
+pub const state = @import("state.zig");
+
 pub const default_options = @import("std").Options{
     .logFn = @import("log.zig").log,
 };

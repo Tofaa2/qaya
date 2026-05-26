@@ -1,4 +1,5 @@
 const math = @import("math");
+const ecs = @import("ecs");
 const renderer = @import("renderer");
 
 pub const MainCamera = struct {};
@@ -13,4 +14,16 @@ pub const Light = struct {
     direction: math.Vec3,
     color: math.Color,
     intensity: f32,
+};
+
+/// Marks an entity as a child of another entity.
+/// The transform will be computed relative to the parent.
+pub const Parent = struct {
+    entity: ecs.Entity,
+};
+
+/// Computed world-space transform matrix.
+/// Updated by the HierarchyPlugin's propagateTransforms system.
+pub const GlobalTransform = struct {
+    value: math.Mat4,
 };

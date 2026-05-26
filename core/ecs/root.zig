@@ -17,6 +17,9 @@ pub const ResourcePool = @import("ResourcePool.zig");
 pub const EventChannel = @import("EventChannel.zig").EventChannel;
 pub const EventSystem = @import("EventSystem.zig").EventSystem;
 
+pub const ComponentHooks = @import("hooks.zig").ComponentHooks;
+pub const Hierarchy = @import("hierarchy.zig").Hierarchy;
+
 pub const serialize = @import("serialize.zig");
 pub const assertBundleSerializable = serialize.assertBundleSerializable;
 pub const assertSerializable = serialize.assertSerializable;
@@ -36,6 +39,8 @@ pub const Changed = system.Changed;
 pub const Added = system.Added;
 pub const runIf = system.runIf;
 pub const chain = system.chain;
+pub const before = system.before;
+pub const after = system.after;
 
 // ---- Tests ------------------------------------------------------------------
 

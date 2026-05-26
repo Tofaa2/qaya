@@ -2,6 +2,7 @@ const std = @import("std");
 const World = @import("world.zig").World;
 const registry = @import("registry.zig");
 const system = @import("system.zig");
+const Allocator = std.mem.Allocator;
 
 pub const Masks = struct {
     read_mask: registry.Mask,
@@ -29,6 +30,8 @@ pub const Schedule = struct {
         read_mask: registry.Mask,
         write_mask: registry.Mask,
         dependencies: []usize = &[_]usize{},
+        before_label: ?[]const u8 = null,
+        after_label: ?[]const u8 = null,
     };
 
     pub fn reset(self: *@This()) void {
@@ -75,25 +78,48 @@ pub const Schedule = struct {
             }
             return last_idx.?;
         } else if (is_struct and @hasDecl(T, "qaya_system_config")) {
-            const sys_w = system.wrap(config.sys);
-            const cond_w = system.wrapCond(config.cond);
-            self.invalidateCache();
-            
-            var deps: []usize = &[_]usize{};
-            if (prev) |p| {
-                deps = try self.allocator.alloc(usize, 1);
-                deps[0] = p;
+            if (@hasDecl(T, "qaya_label")) {
+                // before() / after() ordering label
+                const w = system.wrap(T.system_fn);
+                self.invalidateCache();
+
+                var deps: []usize = &[_]usize{};
+                if (prev) |p| {
+                    deps = try self.allocator.alloc(usize, 1);
+                    deps[0] = p;
+                }
+                try self.systems.append(self.allocator, .{
+                    .run = w.run,
+                    .last_run_tick = w.last_run_tick,
+                    .read_mask = w.read_mask,
+                    .write_mask = w.write_mask,
+                    .dependencies = deps,
+                    .before_label = if (T.qaya_kind == .before) T.qaya_label else null,
+                    .after_label = if (T.qaya_kind == .after) T.qaya_label else null,
+                });
+                return self.systems.items.len - 1;
+            } else {
+                // runIf system
+                const sys_w = system.wrap(config.sys);
+                const cond_w = system.wrapCond(config.cond);
+                self.invalidateCache();
+
+                var deps: []usize = &[_]usize{};
+                if (prev) |p| {
+                    deps = try self.allocator.alloc(usize, 1);
+                    deps[0] = p;
+                }
+                try self.systems.append(self.allocator, .{
+                    .run = sys_w.run,
+                    .run_if = cond_w.run,
+                    .last_run_tick = sys_w.last_run_tick,
+                    .last_cond_tick = cond_w.last_run_tick,
+                    .read_mask = sys_w.read_mask | cond_w.read_mask,
+                    .write_mask = sys_w.write_mask | cond_w.write_mask,
+                    .dependencies = deps,
+                });
+                return self.systems.items.len - 1;
             }
-            try self.systems.append(self.allocator, .{
-                .run = sys_w.run,
-                .run_if = cond_w.run,
-                .last_run_tick = sys_w.last_run_tick,
-                .last_cond_tick = cond_w.last_run_tick,
-                .read_mask = sys_w.read_mask | cond_w.read_mask,
-                .write_mask = sys_w.write_mask | cond_w.write_mask,
-                .dependencies = deps,
-            });
-            return self.systems.items.len - 1;
         } else {
             const w = system.wrap(config);
             self.invalidateCache();
@@ -135,6 +161,7 @@ pub const Schedule = struct {
         if (sys.len == 0) return;
 
         if (self.cached_masks == null) {
+            try self.resolveLabels();
             const masks = try self.allocator.alloc(Masks, sys.len);
             for (sys, 0..) |e, i| {
                 masks[i] = .{ .read_mask = e.read_mask, .write_mask = e.write_mask };
@@ -174,6 +201,48 @@ pub const Schedule = struct {
 
     pub fn len(self: *const @This()) usize {
         return self.systems.items.len;
+    }
+
+    /// Resolves before/after ordering labels into index-based dependencies.
+    /// After resolution, systems with `after("X")` depend on systems with `before("X")`.
+    fn resolveLabels(self: *@This()) !void {
+        // Collect (label, index) pairs for all before-label systems
+        var before_pairs: std.ArrayListUnmanaged(struct { label: []const u8, idx: usize }) = .empty;
+        defer before_pairs.deinit(self.allocator);
+
+        for (self.systems.items, 0..) |entry, idx| {
+            if (entry.before_label) |label| {
+                try before_pairs.append(self.allocator, .{ .label = label, .idx = idx });
+            }
+        }
+        if (before_pairs.items.len == 0) return;
+
+        // For each after-label system, add dependencies to matching before systems
+        for (self.systems.items) |*entry| {
+            const after_label = entry.after_label orelse continue;
+
+            var deps: std.ArrayListUnmanaged(usize) = .empty;
+            errdefer deps.deinit(self.allocator);
+            // Copy existing chain dependencies
+            for (entry.dependencies) |d| try deps.append(self.allocator, d);
+
+            var added = false;
+            for (before_pairs.items) |bp| {
+                if (std.mem.eql(u8, bp.label, after_label)) {
+                    try deps.append(self.allocator, bp.idx);
+                    added = true;
+                }
+            }
+
+            if (added) {
+                const old_deps = entry.dependencies;
+                const is_static = @as(*const usize, @ptrCast(old_deps.ptr)) == @as(*const usize, @ptrCast(&[_]usize{}));
+                entry.dependencies = try deps.toOwnedSlice(self.allocator);
+                if (!is_static) self.allocator.free(old_deps);
+            } else {
+                deps.deinit(self.allocator);
+            }
+        }
     }
 };
 

@@ -188,7 +188,7 @@ pub const Plugin = struct {
         light_uniforms: ecs.Res(LightUniforms),
         fallback: ecs.Res(FallbackResources),
         cameras: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
-        meshes: ecs.Query(.{ *comp.MeshComponent, *comp.Transform, *comp.RenderVisible }),
+        meshes: ecs.Query(.{ *comp.MeshComponent, *comp.GlobalTransform, *comp.RenderVisible }),
         lights: ecs.Query(.{ *comp.Light }),
         point_lights: ecs.Query(.{ *comp.Transform, *comp.Light }),
         env_map: ecs.Res(renderer.EnvironmentMap),
@@ -259,7 +259,7 @@ pub const Plugin = struct {
             }
 
             const program = program_pool.value.get(mat.program) orelse continue;
-            const model = row.Transform.toMatrixMat4();
+            const model = row.GlobalTransform.value;
 
             // Set transform for current draw call
             enc.setTransform(&model);

@@ -443,3 +443,20 @@ pub fn chain(systems: anytype) struct {
 } {
     return .{ .systems = systems };
 }
+
+fn BeforeAfter(comptime f: anytype, comptime label: []const u8, comptime kind: enum { before, after }) type {
+    return struct {
+        pub const qaya_system_config = true;
+        pub const qaya_label = label;
+        pub const qaya_kind = kind;
+        pub const system_fn = f;
+    };
+}
+
+pub fn before(comptime label: []const u8, comptime f: anytype) BeforeAfter(f, label, .before) {
+    return .{};
+}
+
+pub fn after(comptime label: []const u8, comptime f: anytype) BeforeAfter(f, label, .after) {
+    return .{};
+}
