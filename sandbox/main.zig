@@ -15,6 +15,7 @@ pub fn main(init: std.process.Init) !void {
     try app.addSystem(.post_init, spawnGround);
     try app.addSystem(.post_init, spawnBalls);
     try app.addSystem(.post_init, spawnDirLight);
+    try app.addSystem(.post_init, spawnText);
     try app.addSystem(.post_update, lockMouse);
     try app.addSystem(.post_update, orbitLight);
     app.run();
@@ -168,4 +169,27 @@ fn orbitLight(
     while (it.next()) |row| {
         row.Light.direction = .init(dx, height, dz);
     }
+}
+
+fn spawnText(
+    world: *ecs.World,
+    font_pool: ecs.ResMut(qaya.rendering.Font.Pool),
+) !void {
+    const font = try font_pool.value.load(&.{
+        .ttf_data = @embedFile("assets/DejaVuSans.ttf"),
+        .size = 48.0,
+    });
+    const text_bytes = "Hello Qaya!";
+    var buf: [256]u8 = undefined;
+    @memcpy(buf[0..text_bytes.len], text_bytes);
+    _ = try world.spawn(.{
+        qaya.components.Text{
+            .value = buf,
+            .len = text_bytes.len,
+            .font = font,
+            .size = 32.0,
+            .color = math.Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
+        },
+        qaya.components.Transform{ .position = .init(20, 40, 0) },
+    });
 }

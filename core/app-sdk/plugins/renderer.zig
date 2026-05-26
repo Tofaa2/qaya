@@ -27,6 +27,11 @@ const FallbackResources = struct {
 
 const RenderEncoder = @import("../RenderEncoder.zig").RenderEncoder;
 
+const TextRenderer = struct {
+    program: renderer.Program.Pool.Handle,
+    uniforms: renderer.Text.TextUniforms,
+};
+
 pub const Plugin = struct {
     pub const api = renderer;
     pub const log = std.log.scoped(.renderer);
@@ -37,6 +42,7 @@ pub const Plugin = struct {
         app.world.scheduler.add(.render, prepareRenderViews) catch unreachable;
         app.world.scheduler.add(.render, renderSkybox) catch unreachable;
         app.world.scheduler.add(.render, renderPbrMeshes) catch unreachable;
+        app.world.scheduler.add(.render, renderTexts) catch unreachable;
         app.world.scheduler.add(.present, present) catch unreachable;
         app.world.addEventSystem(events.WindowResize, handleResize);
     }
@@ -61,6 +67,7 @@ pub const Plugin = struct {
         world.insertResource(renderer.UniformStore.init(world.allocator));
         world.insertResource(renderer.Texture.Pool.init(world.allocator, world.io));
         world.insertResource(renderer.Material.Pool.init(world.allocator, world.io));
+        world.insertResource(renderer.Font.Pool.init(world.allocator, world.io));
 
         var state_ptr = world.getMutResource(renderer.State).?;
         state_ptr.refreshViewports(.init(0, 0, @intCast(size[0]), @intCast(size[1])));
@@ -120,6 +127,18 @@ pub const Plugin = struct {
             .texture = .{ .idx = std.math.maxInt(u16) },
             .intensity = 1.0,
         });
+
+        {
+            const program_pool = world.getMutResource(renderer.Program.Pool).?;
+            const text_program = program_pool.load(&renderer.Text.programInfo()) catch |err| {
+                log.err("Failed to load text shader program: {s}", .{@errorName(err)});
+                return;
+            };
+            world.insertResource(TextRenderer{
+                .program = text_program,
+                .uniforms = renderer.Text.initUniforms(store),
+            });
+        }
 
         log.info("Renderer initialized {}", .{world.getResource(renderer.Device).?.getRendererType()});
     }
@@ -285,6 +304,37 @@ pub const Plugin = struct {
             enc.setIndexBuffer(mesh.ib, 0, mesh.index_count);
             enc.setState(bgfx.StateFlags_Default, 0);
             enc.submit(@intFromEnum(renderer.View.Id.@"3d"), program.handle, 0, 0xff);
+        }
+    }
+
+    fn renderTexts(
+        enc_param: RenderEncoder(),
+        program_pool: ecs.ResMut(renderer.Program.Pool),
+        font_pool: ecs.ResMut(renderer.Font.Pool),
+        text_renderer: ecs.Res(TextRenderer),
+        texts: ecs.Query(.{ *comp.Text, *comp.Transform }),
+    ) void {
+        const enc = enc_param.value;
+        const program = program_pool.value.get(text_renderer.value.program) orelse return;
+        const uniforms = text_renderer.value.uniforms;
+
+        var it = texts.iter();
+        while (it.next()) |row| {
+            const text_comp = row.Text;
+            const transform = row.Transform;
+            const font = font_pool.value.get(text_comp.font) orelse continue;
+
+            renderer.Text.renderText(
+                enc,
+                font,
+                text_comp.value[0..text_comp.len],
+                text_comp.size,
+                text_comp.color,
+                transform.position,
+                @intFromEnum(renderer.View.Id.@"2d"),
+                program.handle,
+                uniforms,
+            );
         }
     }
 

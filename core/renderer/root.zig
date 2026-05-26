@@ -18,3 +18,5 @@ pub const UniformValue = UniformStore.UniformValue;
 pub const vertices = @import("vertices.zig");
 pub const Skybox = @import("Skybox.zig");
 pub const EnvironmentMap = Skybox.EnvironmentMap;
+pub const Font = @import("Font.zig");
+pub const Text = @import("Text.zig");

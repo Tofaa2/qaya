@@ -317,6 +317,7 @@ fn linkBgfx(b: *std.Build, target: std.Build.ResolvedTarget, runtime: *std.Build
             .{ .name = "fs_textured", .shaderType = .fragment, .path = b.path("core/renderer/shaders/fs_textured.sc") },
             .{ .name = "vs_textured", .shaderType = .vertex, .path = b.path("core/renderer/shaders/vs_textured.sc") },
             .{ .name = "fs_text", .shaderType = .fragment, .path = b.path("core/renderer/shaders/fs_text.sc") },
+            .{ .name = "vs_text", .shaderType = .vertex, .path = b.path("core/renderer/shaders/vs_text.sc") },
             .{ .name = "vs_lit", .shaderType = .vertex, .path = b.path("core/renderer/shaders/vs_lit.sc") },
             .{ .name = "fs_lit", .shaderType = .fragment, .path = b.path("core/renderer/shaders/fs_lit.sc") },
             .{ .name = "vs_pbr", .shaderType = .vertex, .path = b.path("core/renderer/shaders/vs_pbr.sc") },

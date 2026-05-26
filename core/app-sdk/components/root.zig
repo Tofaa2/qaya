@@ -27,3 +27,11 @@ pub const Parent = struct {
 pub const GlobalTransform = struct {
     value: math.Mat4,
 };
+
+pub const Text = struct {
+    value: [256]u8,
+    len: usize,
+    font: renderer.Font.Pool.Handle,
+    size: f32,
+    color: math.Color,
+};
