@@ -17,7 +17,7 @@ pub fn main(init: std.process.Init) !void {
     try app.addSystem(.post_init, spawnDirLight);
     try app.addSystem(.post_init, spawnText);
     try app.addSystem(.post_init, spawnUi);
-    try app.addSystem(.update, toggleLight);
+    try app.addSystem(.update, myUiSystem);
     try app.addSystem(.post_update, lockMouse);
     try app.addSystem(.post_update, orbitLight);
     app.run();
@@ -198,7 +198,10 @@ fn spawnText(
     std.log.info("spawnText: done", .{});
 }
 
-fn spawnUi(world: *ecs.World) !void {
+fn spawnUi(
+    world: *ecs.World,
+    font_pool: ecs.ResMut(qaya.rendering.Font.Pool),
+) !void {
     const root = try world.spawn(.{
         qaya.components.UiNode{
             .flex_grow = 1,
@@ -218,7 +221,7 @@ fn spawnUi(world: *ecs.World) !void {
         qaya.components.Parent{ .entity = root },
     });
 
-    _ = try world.spawn(.{
+    const button = try world.spawn(.{
         qaya.components.UiNode{
             .height = 40,
             .flex_grow = 0,
@@ -235,30 +238,64 @@ fn spawnUi(world: *ecs.World) !void {
         qaya.components.Parent{ .entity = root },
     });
 
+    // Button label text
+    const font = try font_pool.value.load(&.{
+        .ttf_data = @embedFile("assets/DejaVuSans.ttf"),
+        .size = 48.0,
+    });
+    const label = "Toggle";
+    var label_buf: [256]u8 = undefined;
+    @memcpy(label_buf[0..label.len], label);
+    _ = try world.spawn(.{
+        qaya.components.Text{
+            .value = label_buf,
+            .len = label.len,
+            .font = font,
+            .size = 18.0,
+            .color = math.Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
+        },
+        qaya.components.Transform{ .position = .init(35, 35, 0) },
+        qaya.components.Parent{ .entity = button },
+        qaya.components.UiTextOffset{ .x = 10, .y = 10 },
+    });
+
     std.log.info("spawnUi: done", .{});
 }
 
-fn toggleLight(
-    input: ecs.Res(qaya.resources.InputState),
-    buttons: ecs.Query(.{ *qaya.components.UiInteraction, *qaya.components.UiBackground }),
-    lights: ecs.Query(.{ *qaya.components.Light }),
+fn myUiSystem(
+    window: ecs.ResMut(qaya.windowing.Window),
+    layouts: ecs.Query(.{ *qaya.components.ComputedLayout, *qaya.components.UiInteraction, *qaya.components.UiBackground }),
+    lights: ecs.Query(.{*qaya.components.Light}),
 ) void {
-    var bit = buttons.iter();
-    while (bit.next()) |row| {
-        const interaction = row.UiInteraction.*;
+    const mouse = window.value.getMouse();
+    const mx: f32 = @floatFromInt(mouse[0]);
+    const my: f32 = @floatFromInt(mouse[1]);
+    const just_pressed = window.value.isMousePressed(.left);
+
+    var hit = layouts.iter();
+    while (hit.next()) |row| {
+        const layout = row.ComputedLayout;
+        const interaction = row.UiInteraction;
         const bg = row.UiBackground;
 
-        switch (interaction) {
-            .none => bg.color = .{ .r = 50, .g = 120, .b = 200, .a = 255 },
-            .hovered => bg.color = .{ .r = 70, .g = 150, .b = 230, .a = 255 },
-            .pressed => bg.color = .{ .r = 30, .g = 90, .b = 170, .a = 255 },
-        }
+        const hovered = mx >= layout.x and mx < layout.x + layout.width and
+            my >= layout.y and my < layout.y + layout.height;
 
-        if (interaction == .pressed and input.value.isMouseJustPressed(.left)) {
+        if (hovered and just_pressed) {
+            interaction.* = .pressed;
+            bg.* = .{ .color = .{ .r = 30, .g = 90, .b = 170, .a = 255 } };
+            std.log.info("CLICK!", .{});
             var lit = lights.iter();
             while (lit.next()) |l| {
                 l.Light.intensity = if (l.Light.intensity > 0) 0 else 1.5;
+                std.log.info("toggle light: intensity={d:.1}", .{l.Light.intensity});
             }
+        } else if (hovered) {
+            interaction.* = .hovered;
+            bg.* = .{ .color = .{ .r = 70, .g = 150, .b = 230, .a = 255 } };
+        } else {
+            interaction.* = .none;
+            bg.* = .{ .color = .{ .r = 50, .g = 120, .b = 200, .a = 255 } };
         }
     }
 }

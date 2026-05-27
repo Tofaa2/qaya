@@ -155,6 +155,9 @@ pub const World = struct {
             .archetype = arch_id,
             .row = @intCast(row),
         };
+        inline for (fields) |field| {
+            self.triggerAddHook(field.type, e);
+        }
         return e;
     }
 

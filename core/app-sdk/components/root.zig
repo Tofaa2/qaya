@@ -76,6 +76,12 @@ pub const UiBackground = struct {
     color: math.Color,
 };
 
+/// Offset applied when syncing ComputedLayout → Transform for text entities.
+pub const UiTextOffset = struct {
+    x: f32 = 0,
+    y: f32 = 0,
+};
+
 /// Interaction state for a UI element (hit-tested each frame).
 pub const UiInteraction = enum(u8) {
     none,

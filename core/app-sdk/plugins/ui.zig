@@ -9,6 +9,7 @@ const RenderEncoder = @import("../RenderEncoder.zig").RenderEncoder;
 const bgfx = renderer.bgfx;
 const builtin = renderer.builtin_shaders;
 
+const window_mod = @import("window");
 const log = std.log.scoped(.ui);
 
 const UiRenderer = struct {
@@ -21,10 +22,12 @@ pub const Plugin = struct {
         app.world.registerComponent(comp.ComputedLayout);
         app.world.registerComponent(comp.UiBackground);
         app.world.registerComponent(comp.UiInteraction);
+        app.world.registerComponent(comp.UiTextOffset);
 
         app.world.scheduler.add(.post_init, uiInit) catch unreachable;
         app.world.scheduler.add(.post_update, uiLayoutSystem) catch unreachable;
         app.world.scheduler.add(.update, uiInteractionSystem) catch unreachable;
+        app.world.scheduler.add(.update, syncTextPositions) catch unreachable;
         app.world.scheduler.add(.render, renderUiPanels) catch unreachable;
 
         log.info("UI plugin initialized", .{});
@@ -49,13 +52,13 @@ fn uiLayoutSystem(
 }
 
 fn uiInteractionSystem(
-    input: ecs.Res(res.InputState),
+    window: ecs.ResMut(window_mod.Window),
     buttons: ecs.Query(.{ *comp.ComputedLayout, *comp.UiInteraction }),
 ) void {
-    const mouse = input.value.getMousePos();
+    const mouse = window.value.getMouse();
     const mx: f32 = @floatFromInt(mouse[0]);
     const my: f32 = @floatFromInt(mouse[1]);
-    const just_pressed = input.value.isMouseJustPressed(.left);
+    const just_pressed = window.value.isMousePressed(.left);
 
     var it = buttons.iter();
     while (it.next()) |row| {
@@ -66,12 +69,26 @@ fn uiInteractionSystem(
             my >= layout.y and my < layout.y + layout.height;
 
         if (hovered and just_pressed) {
-            interaction.* = .pressed;
-        } else if (hovered) {
             interaction.* = .hovered;
         } else {
             interaction.* = .none;
         }
+    }
+}
+
+fn syncTextPositions(
+    world: *ecs.World,
+    texts: ecs.Query(.{ *comp.Transform, *comp.Parent, *const comp.Text }),
+) void {
+    var it = texts.iter();
+    while (it.next()) |row| {
+        const parent = world.get(row.Parent.entity, comp.ComputedLayout) orelse continue;
+        const offset = if (world.get(row.entity, comp.UiTextOffset)) |o|
+            .{ o.x, o.y }
+        else
+            .{ 10, 10 };
+        row.Transform.position.x = parent.x + offset[0];
+        row.Transform.position.y = parent.y + offset[1];
     }
 }
 
@@ -82,12 +99,15 @@ fn renderUiPanels(
     panels: ecs.Query(.{ *comp.ComputedLayout, *comp.UiBackground }),
 ) void {
     const enc = enc_param.value;
-    const program = program_pool.value.get(ui_renderer.value.program) orelse return;
+    const program = program_pool.value.get(ui_renderer.value.program) orelse {
+        log.warn("UI program not found in pool", .{});
+        return;
+    };
 
     const layout = renderer.vertex_parser.createLayout(renderer.vertices.PosColor, .{}, bgfx.getRendererType());
 
-    var it = panels.iter();
-    while (it.next()) |row| {
+    var it2 = panels.iter();
+    while (it2.next()) |row| {
         const rect = row.ComputedLayout;
         const bg = row.UiBackground;
         const x0 = rect.x;
@@ -124,6 +144,6 @@ fn renderUiPanels(
             bgfx.StateFlags_WriteRgb | bgfx.StateFlags_WriteA | bgfx.StateFlags_Msaa | bgfx.StateFlags_DepthTestAlways | blend,
             0,
         );
-        enc.submit(@intFromEnum(renderer.View.Id.@"2d"), program.handle, 0, 0xff);
+        enc.submit(@intFromEnum(renderer.View.Id.@"2d"), program.handle, 1, 0xff);
     }
 }

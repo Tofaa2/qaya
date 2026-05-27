@@ -99,7 +99,7 @@ pub const Plugin = struct {
                 .width = 1,
                 .height = 1,
                 .format = .RGBA8,
-            }             }) catch |err| {
+            } }) catch |err| {
                 log.err("Failed to create white fallback texture: {s}", .{@errorName(err)});
                 return;
             };
@@ -208,7 +208,7 @@ pub const Plugin = struct {
         fallback: ecs.Res(FallbackResources),
         cameras: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
         meshes: ecs.Query(.{ *comp.MeshComponent, *comp.GlobalTransform, *comp.RenderVisible }),
-        lights: ecs.Query(.{ *comp.Light }),
+        lights: ecs.Query(.{*comp.Light}),
         point_lights: ecs.Query(.{ *comp.Transform, *comp.Light }),
         env_map: ecs.Res(renderer.EnvironmentMap),
     ) void {
@@ -331,8 +331,6 @@ pub const Plugin = struct {
                 continue;
             };
 
-            log.info("rendering text at {} {}", .{ transform.position.x, transform.position.y });
-
             renderer.Text.renderText(
                 enc,
                 font,
@@ -346,7 +344,6 @@ pub const Plugin = struct {
             );
             count += 1;
         }
-        if (count > 0) log.info("rendered {} text entities", .{count});
     }
 
     fn present(dev: ecs.ResMut(renderer.Device), state_res: ecs.ResMut(renderer.State)) void {

@@ -165,7 +165,10 @@ fn layoutChildren(
 }
 
 pub fn run(world: *ecs.World, screen_width: f32, screen_height: f32) void {
-    const hierarchy = world.getMutResource(ecs.Hierarchy) orelse return;
+    const hierarchy = world.getMutResource(ecs.Hierarchy) orelse {
+        std.log.warn("ui_layout: no Hierarchy resource", .{});
+        return;
+    };
 
     var roots: [128]ecs.Entity = undefined;
     var root_count: usize = 0;

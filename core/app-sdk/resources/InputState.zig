@@ -21,6 +21,8 @@ mouse_buttons_pressed: MouseSet = MouseSet.initEmpty(),
 mouse_buttons_held: MouseSet = MouseSet.initEmpty(),
 mouse_buttons_released: MouseSet = MouseSet.initEmpty(),
 
+left_just_pressed: bool = false,
+
 mouse_x: i32 = 0,
 mouse_y: i32 = 0,
 mouse_delta_x: f32 = 0,
@@ -41,6 +43,7 @@ pub fn isJustReleased(self: *const InputState, key: enums.Key) bool {
 }
 
 pub fn isMouseJustPressed(self: *const InputState, button: enums.MouseButton) bool {
+    if (button == .left) return self.left_just_pressed;
     return self.mouse_buttons_pressed.isSet(mouseBit(button));
 }
 
@@ -82,11 +85,13 @@ pub fn handleEvent(self: *InputState, event: Event) void {
             self.mouse_buttons_released.unset(mouseBit(ev.button));
             self.mouse_x = ev.x;
             self.mouse_y = ev.y;
+            if (ev.button == .left) {
+                self.left_just_pressed = true;
+            }
         },
         .mouse_button_released => |ev| {
             self.mouse_buttons_held.unset(mouseBit(ev.button));
             self.mouse_buttons_released.set(mouseBit(ev.button));
-            self.mouse_buttons_pressed.unset(mouseBit(ev.button));
             self.mouse_x = ev.x;
             self.mouse_y = ev.y;
         },
@@ -113,4 +118,5 @@ pub fn frameEnd(self: *InputState) void {
     self.mouse_delta_y = 0;
     self.scroll_x = 0;
     self.scroll_y = 0;
+    self.left_just_pressed = false;
 }
