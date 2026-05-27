@@ -17,13 +17,11 @@ pub const Light = struct {
 };
 
 /// Marks an entity as a child of another entity.
-/// The transform will be computed relative to the parent.
 pub const Parent = struct {
     entity: ecs.Entity,
 };
 
 /// Computed world-space transform matrix.
-/// Updated by the HierarchyPlugin's propagateTransforms system.
 pub const GlobalTransform = struct {
     value: math.Mat4,
 };
@@ -34,4 +32,53 @@ pub const Text = struct {
     font: renderer.Font.Pool.Handle,
     size: f32,
     color: math.Color,
+};
+
+// ── UI system ──
+
+pub const UiDirection = enum { row, column };
+pub const UiJustify = enum { start, center, end, space_between, space_around };
+pub const UiAlign = enum { start, center, end, stretch };
+
+pub const UiEdge = struct {
+    top: f32 = 0,
+    right: f32 = 0,
+    bottom: f32 = 0,
+    left: f32 = 0,
+};
+
+/// Flexbox-style layout properties for a UI node.
+pub const UiNode = struct {
+    width: f32 = 0,
+    height: f32 = 0,
+    min_width: f32 = 0,
+    min_height: f32 = 0,
+    flex_grow: f32 = 0,
+    flex_shrink: f32 = 1,
+    margin: UiEdge = .{},
+    padding: UiEdge = .{},
+    direction: UiDirection = .column,
+    justify_content: UiJustify = .start,
+    align_items: UiAlign = .stretch,
+    gap: f32 = 0,
+};
+
+/// Output of the layout system – the resolved screen-space rectangle.
+pub const ComputedLayout = struct {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+};
+
+/// Renders a colored rectangle behind the node.
+pub const UiBackground = struct {
+    color: math.Color,
+};
+
+/// Interaction state for a UI element (hit-tested each frame).
+pub const UiInteraction = enum(u8) {
+    none,
+    hovered,
+    pressed,
 };

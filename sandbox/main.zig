@@ -16,6 +16,8 @@ pub fn main(init: std.process.Init) !void {
     try app.addSystem(.post_init, spawnBalls);
     try app.addSystem(.post_init, spawnDirLight);
     try app.addSystem(.post_init, spawnText);
+    try app.addSystem(.post_init, spawnUi);
+    try app.addSystem(.update, toggleLight);
     try app.addSystem(.post_update, lockMouse);
     try app.addSystem(.post_update, orbitLight);
     app.run();
@@ -175,6 +177,7 @@ fn spawnText(
     world: *ecs.World,
     font_pool: ecs.ResMut(qaya.rendering.Font.Pool),
 ) !void {
+    std.log.info("spawnText: loading font...", .{});
     const font = try font_pool.value.load(&.{
         .ttf_data = @embedFile("assets/DejaVuSans.ttf"),
         .size = 48.0,
@@ -190,6 +193,72 @@ fn spawnText(
             .size = 32.0,
             .color = math.Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
         },
-        qaya.components.Transform{ .position = .init(20, 40, 0) },
+        qaya.components.Transform{ .position = .init(240, 40, 0) },
     });
+    std.log.info("spawnText: done", .{});
+}
+
+fn spawnUi(world: *ecs.World) !void {
+    const root = try world.spawn(.{
+        qaya.components.UiNode{
+            .flex_grow = 1,
+            .direction = .row,
+        },
+    });
+
+    const sidebar = try world.spawn(.{
+        qaya.components.UiNode{
+            .width = 220,
+            .flex_grow = 0,
+            .padding = .{ .left = 20, .right = 20, .top = 20, .bottom = 20 },
+            .direction = .column,
+            .align_items = .stretch,
+        },
+        qaya.components.UiBackground{ .color = .{ .r = 20, .g = 22, .b = 28, .a = 200 } },
+        qaya.components.Parent{ .entity = root },
+    });
+
+    _ = try world.spawn(.{
+        qaya.components.UiNode{
+            .height = 40,
+            .flex_grow = 0,
+        },
+        qaya.components.UiBackground{ .color = .{ .r = 50, .g = 120, .b = 200, .a = 255 } },
+        @as(qaya.components.UiInteraction, .none),
+        qaya.components.Parent{ .entity = sidebar },
+    });
+
+    _ = try world.spawn(.{
+        qaya.components.UiNode{
+            .flex_grow = 1,
+        },
+        qaya.components.Parent{ .entity = root },
+    });
+
+    std.log.info("spawnUi: done", .{});
+}
+
+fn toggleLight(
+    input: ecs.Res(qaya.resources.InputState),
+    buttons: ecs.Query(.{ *qaya.components.UiInteraction, *qaya.components.UiBackground }),
+    lights: ecs.Query(.{ *qaya.components.Light }),
+) void {
+    var bit = buttons.iter();
+    while (bit.next()) |row| {
+        const interaction = row.UiInteraction.*;
+        const bg = row.UiBackground;
+
+        switch (interaction) {
+            .none => bg.color = .{ .r = 50, .g = 120, .b = 200, .a = 255 },
+            .hovered => bg.color = .{ .r = 70, .g = 150, .b = 230, .a = 255 },
+            .pressed => bg.color = .{ .r = 30, .g = 90, .b = 170, .a = 255 },
+        }
+
+        if (interaction == .pressed and input.value.isMouseJustPressed(.left)) {
+            var lit = lights.iter();
+            while (lit.next()) |l| {
+                l.Light.intensity = if (l.Light.intensity > 0) 0 else 1.5;
+            }
+        }
+    }
 }

@@ -6,23 +6,8 @@ const Program = @import("Program.zig");
 const Encoder = @import("Encoder.zig");
 const UniformStore = @import("UniformStore.zig");
 const builtin = @import("builtin_shaders");
-
-pub const TextVertex = extern struct {
-    x: f32,
-    y: f32,
-    z: f32,
-    u: f32,
-    v: f32,
-};
-
-pub fn vertexLayout() bgfx.VertexLayout {
-    var layout: bgfx.VertexLayout = undefined;
-    _ = layout.begin(bgfx.getRendererType());
-    _ = layout.add(.Position, 3, .Float, false, false);
-    _ = layout.add(.TexCoord0, 2, .Float, false, false);
-    layout.end();
-    return layout;
-}
+const vertex_parser = @import("vertex_parser.zig");
+const vertices = @import("vertices.zig");
 
 pub fn programInfo() Program.Info {
     return Program.Info.initBuiltin(builtin.fs_text, builtin.vs_text);
@@ -57,12 +42,15 @@ pub fn renderText(
     const vertex_count = char_count * 4;
     const index_count = char_count * 6;
 
-    const layout = vertexLayout();
+    const layout = vertex_parser.createLayout(vertices.PosTex, .{}, bgfx.getRendererType());
     var tvb: bgfx.TransientVertexBuffer = undefined;
     var tib: bgfx.TransientIndexBuffer = undefined;
-    if (!bgfx.allocTransientBuffers(&tvb, &layout, @intCast(vertex_count), &tib, @intCast(index_count), false)) return;
+    if (!bgfx.allocTransientBuffers(&tvb, &layout, @intCast(vertex_count), &tib, @intCast(index_count), false)) {
+        std.log.warn("allocTransientBuffers failed ({} verts, {} idxs)", .{ vertex_count, index_count });
+        return;
+    }
 
-    const verts: [*]TextVertex = @ptrCast(@alignCast(tvb.data));
+    const verts: [*]vertices.PosTex = @ptrCast(@alignCast(tvb.data));
     const indices: [*]u16 = @ptrCast(@alignCast(tib.data));
 
     const atlas_w: f32 = @floatFromInt(font.atlas_width);
@@ -101,10 +89,10 @@ pub fn renderText(
         const @"v1": f32 = @as(f32, @floatFromInt(bc.y1)) / atlas_h;
 
         const vbase = vi;
-        verts[vi] = .{ .x = x0, .y = y0, .z = 0, .u = @"u0", .v = @"v0" }; vi += 1;
-        verts[vi] = .{ .x = x1, .y = y0, .z = 0, .u = @"u1", .v = @"v0" }; vi += 1;
-        verts[vi] = .{ .x = x1, .y = y1, .z = 0, .u = @"u1", .v = @"v1" }; vi += 1;
-        verts[vi] = .{ .x = x0, .y = y1, .z = 0, .u = @"u0", .v = @"v1" }; vi += 1;
+        verts[vi] = .{ .position = .init(x0, y0, 0), .texcoord0 = .init(@"u0", @"v0") }; vi += 1;
+        verts[vi] = .{ .position = .init(x1, y0, 0), .texcoord0 = .init(@"u1", @"v0") }; vi += 1;
+        verts[vi] = .{ .position = .init(x1, y1, 0), .texcoord0 = .init(@"u1", @"v1") }; vi += 1;
+        verts[vi] = .{ .position = .init(x0, y1, 0), .texcoord0 = .init(@"u0", @"v1") }; vi += 1;
 
         const ibase = @as(u16, @intCast(vbase));
         indices[ii] = ibase;       ii += 1;
@@ -130,7 +118,7 @@ pub fn renderText(
     const inv_src_alpha: u64 = 6;
     const blend = (src_alpha << 12) | (inv_src_alpha << 16) | (src_alpha << 20) | (inv_src_alpha << 24);
     enc.setState(
-        bgfx.StateFlags_Default | blend,
+        bgfx.StateFlags_WriteRgb | bgfx.StateFlags_WriteA | bgfx.StateFlags_Msaa | bgfx.StateFlags_DepthTestAlways | blend,
         0,
     );
     enc.submit(view_id, program, 0, 0xff);

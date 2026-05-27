@@ -315,14 +315,23 @@ pub const Plugin = struct {
         texts: ecs.Query(.{ *comp.Text, *comp.Transform }),
     ) void {
         const enc = enc_param.value;
-        const program = program_pool.value.get(text_renderer.value.program) orelse return;
+        const program = program_pool.value.get(text_renderer.value.program) orelse {
+            log.warn("text program not found", .{});
+            return;
+        };
         const uniforms = text_renderer.value.uniforms;
 
         var it = texts.iter();
+        var count: u32 = 0;
         while (it.next()) |row| {
             const text_comp = row.Text;
             const transform = row.Transform;
-            const font = font_pool.value.get(text_comp.font) orelse continue;
+            const font = font_pool.value.get(text_comp.font) orelse {
+                log.warn("font not found", .{});
+                continue;
+            };
+
+            log.info("rendering text at {} {}", .{ transform.position.x, transform.position.y });
 
             renderer.Text.renderText(
                 enc,
@@ -335,7 +344,9 @@ pub const Plugin = struct {
                 program.handle,
                 uniforms,
             );
+            count += 1;
         }
+        if (count > 0) log.info("rendered {} text entities", .{count});
     }
 
     fn present(dev: ecs.ResMut(renderer.Device), state_res: ecs.ResMut(renderer.State)) void {

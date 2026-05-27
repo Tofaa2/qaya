@@ -61,7 +61,7 @@ pub fn init(config: Config) !RenderDevice {
     if (!bgfx.init(&bx_init)) return error.BgfxInitFailed;
 
     if (config.debug) {
-        bgfx.setDebug(bgfx.DebugFlags_Stats);
+        // bgfx.setDebug(bgfx.DebugFlags_Stats);
         @import("bgfx").debugdraw.init();
     }
 
