@@ -151,9 +151,9 @@ pub const Plugin = struct {
     ) void {
         // Don't move the camera while typing in a text input
         {
-            var ti_q = world.query(&.{ comp.UiTextInput });
+            var ti_q = world.query(&.{ comp.ui.UiTextInput });
             while (ti_q.next()) |hit| {
-                const ti = world.get(hit.entity, comp.UiTextInput) orelse continue;
+                const ti = world.get(hit.entity, comp.ui.UiTextInput) orelse continue;
                 if (ti.focused) return;
             }
         }

@@ -34,9 +34,9 @@ fn lockMouse(
 
     // Don't toggle mouse capture while typing in a text input
     {
-        var ti_q = world.query(&.{ qaya.components.UiTextInput });
+        var ti_q = world.query(&.{ qaya.components.ui.UiTextInput });
         while (ti_q.next()) |hit| {
-            const ti = world.get(hit.entity, qaya.components.UiTextInput) orelse continue;
+            const ti = world.get(hit.entity, qaya.components.ui.UiTextInput) orelse continue;
             if (ti.focused) return;
         }
     }
@@ -214,32 +214,32 @@ fn spawnUi(
     tex_pool: ecs.ResMut(qaya.rendering.Texture.Pool),
 ) !void {
     const root = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .flex_grow = 1,
             .direction = .row,
         },
     });
 
     const sidebar = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .width = 220,
             .flex_grow = 0,
             .padding = .{ .left = 20, .right = 20, .top = 20, .bottom = 20 },
             .direction = .column,
             .align_items = .stretch,
         },
-        qaya.components.UiBackground{ .color = .{ .r = 20, .g = 22, .b = 28, .a = 200 } },
+        qaya.components.ui.UiBackground{ .color = .{ .r = 20, .g = 22, .b = 28, .a = 200 } },
         qaya.components.Parent{ .entity = root },
     });
 
     const button = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .height = 40,
             .flex_grow = 0,
         },
-        qaya.components.UiBackground{ .color = .{ .r = 50, .g = 120, .b = 200, .a = 255 } },
-        @as(qaya.components.UiInteraction, .none),
-        qaya.components.ClickAction{ .callback = toggleLights },
+        qaya.components.ui.UiBackground{ .color = .{ .r = 50, .g = 120, .b = 200, .a = 255 } },
+        @as(qaya.components.ui.UiInteraction, .none),
+        qaya.components.ui.ClickAction{ .callback = toggleLights },
         qaya.components.Parent{ .entity = sidebar },
     });
 
@@ -254,15 +254,15 @@ fn spawnUi(
     var input_buf: [256]u8 = undefined;
     @memcpy(input_buf[0..input_text.len], input_text);
     _ = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .width = 180,
             .height = 36,
             .flex_grow = 0,
             .padding = .{ .left = 8, .right = 8, .top = 4, .bottom = 4 },
         },
-        qaya.components.UiBackground{ .color = .{ .r = 40, .g = 42, .b = 48, .a = 255 } },
-        @as(qaya.components.UiInteraction, .none),
-        qaya.components.UiTextInput{
+        qaya.components.ui.UiBackground{ .color = .{ .r = 40, .g = 42, .b = 48, .a = 255 } },
+        @as(qaya.components.ui.UiInteraction, .none),
+        qaya.components.ui.UiTextInput{
             .on_submit = submitInput,
         },
         qaya.components.Text{
@@ -281,17 +281,17 @@ fn spawnUi(
     const img_tex = tex_pool.value.get(img_handle) orelse return error.FileNotFound;
     std.log.info("shinoa.png: {}x{}", .{ img_tex.width, img_tex.height });
     _ = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .height = 180,
             .flex_grow = 0,
         },
-        qaya.components.UiImage{ .texture = img_handle },
+        qaya.components.ui.UiImage{ .texture = img_handle },
         qaya.components.Parent{ .entity = sidebar },
     });
 
     // Main area with wrapping swatch grid
     const main_area = try world.spawn(.{
-        qaya.components.UiNode{
+        qaya.components.ui.UiNode{
             .flex_grow = 1,
             .padding = .{ .left = 20, .right = 20, .top = 20, .bottom = 20 },
             .direction = .row,
@@ -299,7 +299,7 @@ fn spawnUi(
             .justify_content = .space_around,
             .gap = 12,
         },
-        qaya.components.Scroll{},
+        qaya.components.ui.Scroll{},
         qaya.components.Parent{ .entity = root },
     });
 
@@ -323,13 +323,13 @@ fn spawnUi(
     };
     for (swatch_colors) |color| {
         _ = try world.spawn(.{
-            qaya.components.UiNode{
+            qaya.components.ui.UiNode{
                 .width = 80,
                 .height = 80,
                 .flex_grow = 0,
                 .flex_shrink = 0,
             },
-            qaya.components.UiBackground{ .color = color },
+            qaya.components.ui.UiBackground{ .color = color },
             qaya.components.Parent{ .entity = main_area },
         });
     }
@@ -346,7 +346,7 @@ fn spawnUi(
             .size = 18.0,
             .color = math.Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
         },
-        qaya.components.UiNode{ .flex_grow = 0 },
+        qaya.components.ui.UiNode{ .flex_grow = 0 },
         qaya.components.Transform{ .position = .init(0, 0, 0) },
         qaya.components.Parent{ .entity = button },
     });
@@ -371,7 +371,7 @@ fn toggleLights(world: *ecs.World) void {
 
 fn myUiSystem(
     world: *ecs.World,
-    buttons: ecs.Query(.{ *const qaya.components.UiInteraction, *qaya.components.UiBackground }),
+    buttons: ecs.Query(.{ *const qaya.components.ui.UiInteraction, *qaya.components.ui.UiBackground }),
 ) void {
     // Button visual feedback
     var hit = buttons.iter();
@@ -393,9 +393,9 @@ fn myUiSystem(
     // Scroll main_area with mouse wheel
     const input = world.getResource(qaya.resources.InputState) orelse return;
     const scroll_delta = input.getScrollDelta();
-    var sq = world.query(&.{ qaya.components.Scroll });
+    var sq = world.query(&.{ qaya.components.ui.Scroll });
     while (sq.next()) |srow| {
-        const scroll = world.getMut(srow.entity, qaya.components.Scroll) orelse continue;
+        const scroll = world.getMut(srow.entity, qaya.components.ui.Scroll) orelse continue;
         scroll.offset_y += scroll_delta[1] * 3;
         scroll.offset_y = @max(scroll.offset_y, 0);
     }

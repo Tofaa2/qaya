@@ -2,11 +2,11 @@ const std = @import("std");
 const ecs = @import("ecs");
 const comp = @import("components/root.zig");
 
-fn setOrAddLayout(world: *ecs.World, entity: ecs.Entity, layout: comp.ComputedLayout) void {
-    if (world.getMut(entity, comp.ComputedLayout)) |existing| {
+fn setOrAddLayout(world: *ecs.World, entity: ecs.Entity, layout: comp.ui.ComputedLayout) void {
+    if (world.getMut(entity, comp.ui.ComputedLayout)) |existing| {
         existing.* = layout;
     } else {
-        world.addComponent(entity, comp.ComputedLayout, layout) catch {};
+        world.addComponent(entity, comp.ui.ComputedLayout, layout) catch {};
     }
 }
 
@@ -19,7 +19,7 @@ fn layoutNode(
     width: f32,
     height: f32,
 ) void {
-    const node = world.get(entity, comp.UiNode) orelse return;
+    const node = world.get(entity, comp.ui.UiNode) orelse return;
 
     const final_w = @max(width, node.min_width);
     const final_h = @max(height, node.min_height);
@@ -36,7 +36,7 @@ fn layoutNode(
 
 const ChildInfo = struct {
     entity: ecs.Entity,
-    node: *const comp.UiNode,
+    node: *const comp.ui.UiNode,
     pref_main: f32,
     min_main: f32,
     pref_cross: f32,
@@ -56,12 +56,12 @@ fn layoutChildren(
     parent_w: f32,
     parent_h: f32,
 ) void {
-    const node = world.get(parent, comp.UiNode) orelse return;
+    const node = world.get(parent, comp.ui.UiNode) orelse return;
     const children = hierarchy.getChildren(parent) orelse return;
 
     var ui_count: usize = 0;
     for (children) |child| {
-        if (world.get(child, comp.UiNode) != null) ui_count += 1;
+        if (world.get(child, comp.ui.UiNode) != null) ui_count += 1;
     }
     if (ui_count == 0) return;
 
@@ -71,7 +71,7 @@ fn layoutChildren(
         var i: usize = 0;
         for (children) |child| {
             if (i >= ents.len) break;
-            if (world.get(child, comp.UiNode) != null) {
+            if (world.get(child, comp.ui.UiNode) != null) {
                 ents[i] = child;
                 i += 1;
             }
@@ -92,7 +92,7 @@ fn layoutChildren(
     var ibuf: [64]ChildInfo = undefined;
     const infos = ibuf[0..ents.len];
     for (ents, infos) |e, *info| {
-        const cn = world.get(e, comp.UiNode).?;
+        const cn = world.get(e, comp.ui.UiNode).?;
             info.* = .{
                 .entity = e,
                 .node = cn,
@@ -269,7 +269,7 @@ pub fn run(world: *ecs.World, screen_width: f32, screen_height: f32) void {
     var roots: [128]ecs.Entity = undefined;
     var root_count: usize = 0;
 
-    var q = world.query(&.{ comp.UiNode });
+    var q = world.query(&.{ comp.ui.UiNode });
     while (q.next()) |hit| {
         if (root_count >= roots.len) break;
         if (world.get(hit.entity, comp.Parent) == null) {
