@@ -1,4 +1,5 @@
 pub const bgfx = @import("bgfx").bgfx;
+pub const zbgfx = @import("bgfx");
 pub const builtin_shaders = @import("builtin_shaders");
 pub const Device = @import("Device.zig");
 pub const DebugEncoder = @import("bgfx").debugdraw.Encoder;

@@ -143,22 +143,12 @@ pub const Plugin = struct {
         log.info("Renderer initialized {}", .{world.getResource(renderer.Device).?.getRendererType()});
     }
 
-    fn cameraControl(
-        world: *ecs.World,
-        input: ecs.Res(res.InputState),
-        time: ecs.Res(res.Time),
-        query: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
-    ) void {
-        // Don't move the camera while typing in a text input
-        {
-            var ti_q = world.query(&.{ comp.ui.UiTextInput });
-            while (ti_q.next()) |hit| {
-                const ti = world.get(hit.entity, comp.ui.UiTextInput) orelse continue;
-                if (ti.focused) return;
-            }
-        }
-
-        const delta = time.value.delta;
+fn cameraControl(
+    input: ecs.Res(res.InputState),
+    time: ecs.Res(res.Time),
+    query: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
+) void {
+    const delta = time.value.delta;
         const speed = 5.0 * delta;
 
         var qit = query.iter();
@@ -317,23 +307,23 @@ pub const Plugin = struct {
         }
     }
 
-    fn renderTexts(
-        enc_param: RenderEncoder(),
-        program_pool: ecs.ResMut(renderer.Program.Pool),
-        font_pool: ecs.ResMut(renderer.Font.Pool),
-        text_renderer: ecs.Res(TextRenderer),
-        texts: ecs.Query(.{ *comp.Text, *comp.Transform }),
-    ) void {
-        const enc = enc_param.value;
-        const program = program_pool.value.get(text_renderer.value.program) orelse {
-            log.warn("text program not found", .{});
-            return;
-        };
-        const uniforms = text_renderer.value.uniforms;
+fn renderTexts(
+    enc_param: RenderEncoder(),
+    program_pool: ecs.ResMut(renderer.Program.Pool),
+    font_pool: ecs.ResMut(renderer.Font.Pool),
+    text_renderer: ecs.Res(TextRenderer),
+    texts: ecs.Query(.{ *comp.Text, *comp.Transform }),
+) void {
+    const enc = enc_param.value;
+    const program = program_pool.value.get(text_renderer.value.program) orelse {
+        log.warn("text program not found", .{});
+        return;
+    };
+    const uniforms = text_renderer.value.uniforms;
 
-        var it = texts.iter();
-        var count: u32 = 0;
-        while (it.next()) |row| {
+    var it = texts.iter();
+    var count: u32 = 0;
+    while (it.next()) |row| {
             const text_comp = row.Text;
             const transform = row.Transform;
             const font = font_pool.value.get(text_comp.font) orelse {

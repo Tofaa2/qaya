@@ -2,8 +2,6 @@ const math = @import("math");
 const ecs = @import("ecs");
 const renderer = @import("renderer");
 
-pub const ui = @import("ui.zig");
-
 pub const MainCamera = struct {};
 pub const Camera = math.Camera;
 pub const Transform = math.Transform;
