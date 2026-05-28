@@ -9,6 +9,48 @@ const builtin = @import("builtin_shaders");
 const vertex_parser = @import("vertex_parser.zig");
 const vertices = @import("vertices.zig");
 
+pub const Measurement = struct {
+    width: f32,
+    height: f32,
+};
+
+pub fn measureText(font: *const Font, text: []const u8, font_size: f32) Measurement {
+    const scale = font_size / font.size;
+    var cursor_x: f32 = 0;
+    var max_y: f32 = 0;
+    var min_y: f32 = 0;
+    var first = true;
+
+    for (text) |ch| {
+        if (ch < font.first_char or ch > font.last_char) continue;
+        if (ch == '\n') {
+            cursor_x = 0;
+            continue;
+        }
+        const ch_idx = ch - font.first_char;
+        const bc = font.chardata[ch_idx];
+
+        const y0 = bc.yoff * scale;
+        const y1 = y0 + @as(f32, @floatFromInt(bc.y1 - bc.y0)) * scale;
+
+        if (first) {
+            min_y = y0;
+            max_y = y1;
+            first = false;
+        } else {
+            if (y0 < min_y) min_y = y0;
+            if (y1 > max_y) max_y = y1;
+        }
+
+        cursor_x += bc.xadvance * scale;
+    }
+
+    return .{
+        .width = cursor_x,
+        .height = if (first) 0 else max_y - min_y,
+    };
+}
+
 pub fn programInfo() Program.Info {
     return Program.Info.initBuiltin(builtin.fs_text, builtin.vs_text);
 }

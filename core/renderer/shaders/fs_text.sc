@@ -8,5 +8,5 @@ uniform vec4 u_color;
 void main()
 {
     vec4 texel = texture2D(s_texColor, v_texcoord0);
-    gl_FragColor = vec4(u_color.rgb, texel.a * u_color.a);
+    gl_FragColor = vec4(mix(texel.rgb, u_color.rgb, u_color.a), texel.a);
 }

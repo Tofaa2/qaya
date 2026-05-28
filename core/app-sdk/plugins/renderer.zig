@@ -144,10 +144,20 @@ pub const Plugin = struct {
     }
 
     fn cameraControl(
+        world: *ecs.World,
         input: ecs.Res(res.InputState),
         time: ecs.Res(res.Time),
         query: ecs.Query(.{ *comp.Camera, *comp.MainCamera }),
     ) void {
+        // Don't move the camera while typing in a text input
+        {
+            var ti_q = world.query(&.{ comp.UiTextInput });
+            while (ti_q.next()) |hit| {
+                const ti = world.get(hit.entity, comp.UiTextInput) orelse continue;
+                if (ti.focused) return;
+            }
+        }
+
         const delta = time.value.delta;
         const speed = 5.0 * delta;
 
