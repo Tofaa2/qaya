@@ -109,20 +109,6 @@ pub fn build(b: *std.Build) void {
     renderer.addImport("stb", stb.root_module);
     renderer.linkLibrary(stb);
 
-    const script = createModule(.{
-        .b = b,
-        .target = target,
-        .optimize = optimize,
-        .name = "script",
-        .path = "core/script/root.zig",
-        .test_step = test_step,
-        .docs_step = docs_step,
-    });
-    script.addImport("lua", b.dependency("luajit", .{
-        .target = target,
-        .optimize = optimize,
-    }).module("luajit"));
-
     const app_sdk = createModule(.{
         .b = b,
         .target = target,
@@ -133,11 +119,6 @@ pub fn build(b: *std.Build) void {
         .docs_step = docs_step,
         .outside = true,
     });
-    app_sdk.addImport("lua", b.dependency("luajit", .{
-        .target = target,
-        .optimize = optimize,
-    }).module("luajit"));
-    app_sdk.addImport("script", script);
     app_sdk.linkLibrary(stb);
     app_sdk.addImport("stb", stb.root_module);
     app_sdk.linkLibrary(window);
@@ -146,6 +127,19 @@ pub fn build(b: *std.Build) void {
     app_sdk.addImport("math", math);
     app_sdk.addImport("pool", pool);
     app_sdk.addImport("ecs", ecs);
+
+    const ui = createModule(.{
+        .b = b,
+        .target = target,
+        .optimize = optimize,
+        .name = "ui",
+        .path = "extras/ui/root.zig",
+        .test_step = test_step,
+        .docs_step = docs_step,
+    });
+    ui.addImport("renderer", renderer);
+    ui.addImport("math", math);
+    ui.addImport("app-sdk", app_sdk);
 
     const sandbox = b.addExecutable(.{
         .name = "sandbox",
@@ -157,10 +151,11 @@ pub fn build(b: *std.Build) void {
             .{ .name = "renderer", .module = renderer },
             .{ .name = "window", .module = window.root_module },
             .{ .name = "app-sdk", .module = app_sdk },
-            .{ .name = "script", .module = script },
+            .{ .name = "ui", .module = ui },
         } }),
     });
     sandbox.root_module.linkLibrary(window);
+    sandbox.root_module.linkLibrary(stb);
 
     b.installArtifact(sandbox);
     const run_sandbox = b.addRunArtifact(sandbox);

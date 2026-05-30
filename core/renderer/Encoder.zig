@@ -60,6 +60,10 @@ pub fn setTransientIndexBuffer(self: Encoder, tib: *const bgfx.TransientIndexBuf
     _ = self.handle.setTransientIndexBuffer(tib, first, num);
 }
 
+pub fn setScissor(self: Encoder, x: u16, y: u16, width: u16, height: u16) void {
+    _ = self.handle.setScissor(x, y, width, height);
+}
+
 pub fn submit(self: Encoder, view_id: u16, program: bgfx.ProgramHandle, depth: u32, flags: u8) void {
     _ = self.handle.submit(view_id, program, depth, flags);
 }

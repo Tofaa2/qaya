@@ -2,6 +2,7 @@ const std = @import("std");
 const qaya = @import("app-sdk");
 const ecs = qaya.ecs;
 const math = qaya.math;
+const ui = @import("ui");
 
 pub const std_options = qaya.default_options;
 
@@ -10,6 +11,9 @@ pub fn main(init: std.process.Init) !void {
     defer app.deinit();
 
     try app.addPlugins(qaya.plugins.Defaults);
+    try app.addPlugin(ui.Plugin);
+    try app.addSystem(.post_init, initUI);
+    try app.addSystem(.update, updateUI);
     try app.addSystem(.post_init, spawnPlayer);
     try app.addSystem(.post_init, spawnEnvironmentMap);
     try app.addSystem(.post_init, spawnGround);
@@ -19,6 +23,48 @@ pub fn main(init: std.process.Init) !void {
     try app.addSystem(.update, lockMouse);
     try app.addSystem(.post_update, orbitLight);
     app.run();
+}
+
+fn initUI(
+    world: *ecs.World,
+    font_pool: ecs.ResMut(qaya.rendering.Font.Pool),
+) !void {
+    const font = try font_pool.value.load(&.{ .ttf_data = @embedFile("assets/DejaVuSans.ttf"), .size = 16.0 });
+    const font_ptr = font_pool.value.get(font) orelse return;
+
+    const ctx_res = world.getMutResource(ui.Context) orelse return;
+    const ctx: *ui.Context = ctx_res;
+    ctx.style.font = font_ptr;
+    ctx.style.title_height = 24;
+    ctx.style.padding = 5;
+    ctx.style.spacing = 4;
+    ctx.style.size = .{ .x = 68, .y = 10 };
+}
+
+fn updateUI(
+    ctx_res: ecs.ResMut(ui.Context),
+    lights: ecs.Query(.{ *qaya.components.Light }),
+) void {
+    const ctx = ctx_res.value;
+
+    ctx.begin();
+
+    ctx.beginRoot();
+    if (!ctx.button("Toggle Light").isZero()) {
+        var it = lights.iter();
+        while (it.next()) |row| {
+            row.Light.intensity = if (row.Light.intensity > 0) 0 else 1.5;
+        }
+        std.log.info("Light toggled", .{});
+    }
+    ctx.endRoot();
+
+    if (!ctx.beginWindow("Debug", .{ .x = 10, .y = 10, .width = 300, .height = 200 }).isZero()) {
+            ctx.label("Hello Qaya UI!");
+            ctx.endWindow();
+    }
+
+    ctx.end();
 }
 
 fn spawnPlayer(world: *ecs.World) !void {

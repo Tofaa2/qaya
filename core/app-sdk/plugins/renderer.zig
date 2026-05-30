@@ -27,7 +27,7 @@ const FallbackResources = struct {
 
 const RenderEncoder = @import("../RenderEncoder.zig").RenderEncoder;
 
-const TextRenderer = struct {
+pub const TextRenderer = struct {
     program: renderer.Program.Pool.Handle,
     uniforms: renderer.Text.TextUniforms,
 };

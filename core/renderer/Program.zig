@@ -45,6 +45,11 @@ pub const Error = error{
     InvalidProgram,
 };
 
+pub fn basicProgramInfo() Info {
+    const builtin = @import("builtin_shaders");
+    return Info.initBuiltin(builtin.fs_basic, builtin.vs_basic);
+}
+
 pub const Info = struct {
     fs_mem: [*c]const bgfx.Memory,
     vs_mem: [*c]const bgfx.Memory,

@@ -29,6 +29,8 @@ mouse_delta_x: f32 = 0,
 mouse_delta_y: f32 = 0,
 scroll_x: f32 = 0,
 scroll_y: f32 = 0,
+text_input: [32]u8 = [_]u8{0} ** 32,
+text_input_len: usize = 0,
 
 pub fn isJustPressed(self: *const InputState, key: enums.Key) bool {
     return self.keys_pressed.isSet(keyBit(key));
@@ -105,6 +107,12 @@ pub fn handleEvent(self: *InputState, event: Event) void {
             self.scroll_x += ev.x;
             self.scroll_y += ev.y;
         },
+        .key_char => |ch| {
+            if (self.text_input_len < self.text_input.len) {
+                const len = std.unicode.utf8Encode(@as(u21, @truncate(ch)), self.text_input[self.text_input_len..]) catch 0;
+                self.text_input_len += len;
+            }
+        },
         else => {},
     }
 }
@@ -119,4 +127,6 @@ pub fn frameEnd(self: *InputState) void {
     self.scroll_x = 0;
     self.scroll_y = 0;
     self.left_just_pressed = false;
+    self.text_input = [_]u8{0} ** 32;
+    self.text_input_len = 0;
 }
