@@ -87,24 +87,33 @@ pub fn deinit(self: *App) void {
     self.world.deinit();
 }
 
-pub fn addPlugin(self: *App, comptime T: type) !void {
-    var vtable = try plugin.makePluginZeroes(T, self.allocator);
+pub fn addPlugin(self: *App, comptime T: type) void {
+    var vtable = plugin.makePluginZeroes(T, self.allocator) catch {
+        log.err("Failed to allocate plugin {s}", .{@typeName(T)});
+        return;
+    };
     vtable.build(self);
-    try self.plugins.append(self.allocator, vtable);
+     self.plugins.append(self.allocator, vtable) catch {
+        log.err("Failed to add plugin {s}", .{@typeName(T)});
+    };
 }
 
-pub fn addPlugins(self: *App, comptime plugins: []const type) !void {
+pub fn addPlugins(self: *App, comptime plugins: []const type) void {
     inline for (plugins) |T| {
-        try self.addPlugin(T);
+        self.addPlugin(T);
     }
 }
 
-pub fn addSystem(self: *App, stage: anytype, comptime f: anytype) !void {
-    try self.world.scheduler.add(stage, f);
+pub fn addSystem(self: *App, stage: anytype, comptime f: anytype) void {
+    self.world.scheduler.add(stage, f) catch {
+        log.err("Failed to insert system to stage {s} at {}", .{ @tagName(stage), @src() });
+    };
 }
 
-pub fn addStatePlugin(self: *App, comptime T: type, initial: T) !void {
+pub fn addStatePlugin(self: *App, comptime T: type, initial: T) void {
     self.world.insertResource(state_module.State(T){ .current = initial });
     self.world.registerEvent(state_module.NextState(T));
-    try self.world.scheduler.add(.state_transition, state_module.transitionSystem(T));
+    self.world.scheduler.add(.state_transition, state_module.transitionSystem(T)) catch {
+        log.err("Failed to add state plugin {s}", .{@typeName(T)});
+    };
 }

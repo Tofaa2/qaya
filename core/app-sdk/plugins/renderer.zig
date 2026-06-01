@@ -5,6 +5,8 @@ const events = @import("../events.zig");
 const renderer = @import("renderer");
 const Window = @import("window.zig").Plugin.api.Window;
 const bgfx = renderer.bgfx;
+const math = @import("math");
+const shapes = math.shapes;
 const comp = @import("../components/root.zig");
 const res = @import("../resources/root.zig");
 
@@ -260,15 +262,44 @@ fn cameraControl(
         }
 
         var camera_pos: [4]f32 = .{ 0, 0, 0, 0 };
+        var frustum: ?shapes.Frustum = null;
+        var total_meshes: u32 = 0;
+        var culled_meshes: u32 = 0;
         if (cameras.first()) |cam| {
             const pos = cam.Camera.position();
             camera_pos = .{ pos.x, pos.y, pos.z, 0 };
+            frustum = shapes.Frustum.fromMatrices(cam.Camera.viewMatrix(), cam.Camera.projMatrix());
+            if (cam.Camera.is3d()) {
+                const p = cam.Camera.perspectiveRef();
+                log.debug("cam yaw={d:.2} pitch={d:.2} np={d:.3}", .{ p.yaw, p.pitch, frustum.?.planes[4].distanceToPoint(.zero()) });
+            }
+        } else {
+            log.warn("no camera found for frustum culling", .{});
         }
 
         var mesh_it = meshes.iter();
         while (mesh_it.next()) |row| {
+            total_meshes += 1;
             const mesh = mesh_pool.value.get(row.MeshComponent.value) orelse continue;
             const mat = mat_pool.value.get(row.MeshComponent.material) orelse continue;
+
+            if (frustum) |f| {
+                const scale = row.GlobalTransform.value.getScale();
+                const max_scale = @max(scale.x, @max(scale.y, scale.z));
+                const world_center = row.GlobalTransform.value.transformPoint(mesh.bounds.center);
+                const sphere = shapes.Sphere.new(world_center, mesh.bounds.radius * max_scale);
+                if (total_meshes <= 11 and total_meshes != 1) {
+                    var in_count: u32 = 0;
+                    for (f.planes) |pl| {
+                        if (pl.distanceToPoint(sphere.center) >= -sphere.radius) in_count += 1;
+                    }
+                    log.debug("  mesh{} ctr({d:.1},{d:.1},{d:.1}) r={d:.2} planes={}", .{ total_meshes, sphere.center.x, sphere.center.y, sphere.center.z, sphere.radius, in_count });
+                }
+                if (!f.intersectsSphere(sphere)) {
+                    culled_meshes += 1;
+                    continue;
+                }
+            }
 
             if (mat.needsBake()) {
                 mat.bakeWithFallback(program_pool.value, uniform_store.value, texture_pool.value, fallback.value.white_texture) catch |err| {
@@ -305,6 +336,7 @@ fn cameraControl(
             enc.setState(bgfx.StateFlags_Default, 0);
             enc.submit(@intFromEnum(renderer.View.Id.@"3d"), program.handle, 0, 0xff);
         }
+        if (total_meshes > 0) log.debug("frustum culling: {d}/{d} meshes culled", .{ culled_meshes, total_meshes });
     }
 
 fn renderTexts(

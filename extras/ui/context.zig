@@ -109,6 +109,7 @@ pub const PoolItem = struct {
 pub const Command = union(enum) {
     clip: struct { rect: Rect },
     rect: struct { rect: Rect, color: Color },
+    rect_gradient: struct { rect: Rect, c0: Color, c1: Color, c2: Color, c3: Color },
     text: struct { font: Font, pos: Vec2, color: Color, str: []const u8 },
     icon: struct { id: IconId, rect: Rect, color: Color },
 };
@@ -193,6 +194,58 @@ fn clamp(x: f32, a: f32, b: f32) f32 {
     return @min(b, @max(a, x));
 }
 
+fn hsvToRgb(h: f32, s: f32, v: f32) Color {
+    const hh = @mod(h, 360.0) / 60.0;
+    const c = v * s;
+    const x = c * (1.0 - @abs(@mod(hh, 2.0) - 1.0));
+    const m = v - c;
+    const sector = @as(u32, @intFromFloat(@floor(hh)));
+    const r1: f32 = switch (sector) {
+        0, 5 => c,
+        1, 4 => x,
+        else => 0,
+    };
+    const g1: f32 = switch (sector) {
+        0, 3 => x,
+        1, 2 => c,
+        else => 0,
+    };
+    const b1: f32 = switch (sector) {
+        2, 5 => x,
+        3, 4 => c,
+        else => 0,
+    };
+    return Color{
+        .r = @intFromFloat(@round((r1 + m) * 255.0)),
+        .g = @intFromFloat(@round((g1 + m) * 255.0)),
+        .b = @intFromFloat(@round((b1 + m) * 255.0)),
+        .a = 255,
+    };
+}
+
+fn rgbToHsv(c: Color) struct { h: f32, s: f32, v: f32 } {
+    const r = @as(f32, @floatFromInt(c.r)) / 255.0;
+    const g = @as(f32, @floatFromInt(c.g)) / 255.0;
+    const b = @as(f32, @floatFromInt(c.b)) / 255.0;
+    const mx = @max(r, @max(g, b));
+    const mn = @min(r, @min(g, b));
+    const delta = mx - mn;
+    const v = mx;
+    const s = if (mx > 0.001) delta / mx else 0;
+    var h: f32 = 0;
+    if (delta > 0.0001) {
+        h = if (mx == r)
+            @mod((g - b) / delta, 6.0)
+        else if (mx == g)
+            (b - r) / delta + 2.0
+        else
+            (r - g) / delta + 4.0;
+        h *= 60.0;
+        if (h < 0) h += 360.0;
+    }
+    return .{ .h = h, .s = s, .v = v };
+}
+
 fn textWidth(font: Font, str: [*:0]const u8, len: i32) i32 {
     const actual_len: usize = if (len < 0) std.mem.len(str) else @intCast(len);
     return @intFromFloat(renderer.Text.measureText(font, str[0..actual_len], font.size).width);
@@ -269,6 +322,8 @@ pub const Context = struct {
     scroll_target: ?*Container,
     number_edit_buf: [MAX_FMT]u8,
     number_edit: Id,
+    color_edit_id: Id,
+    color_edit_buf: [8]u8,
     command_list: std.ArrayList(Command),
     string_data: std.ArrayList(u8),
     root_list: std.ArrayList(*Container),
@@ -305,6 +360,8 @@ pub const Context = struct {
             .scroll_target = null,
             .number_edit_buf = [_]u8{0} ** MAX_FMT,
             .number_edit = 0,
+            .color_edit_id = 0,
+            .color_edit_buf = [_]u8{0} ** 8,
             .command_list = .empty,
             .string_data = .empty,
             .root_list = .empty,
@@ -512,6 +569,13 @@ pub const Context = struct {
         }
     }
 
+    pub fn drawRectGradient(self: *Context, rect: Rect, c0: Color, c1: Color, c2: Color, c3: Color) void {
+        const r = intersectRects(rect, self.getClipRect());
+        if (r.width > 0 and r.height > 0) {
+            self.command_list.append(self.allocator, .{ .rect_gradient = .{ .rect = r, .c0 = c0, .c1 = c1, .c2 = c2, .c3 = c3 } }) catch unreachable;
+        }
+    }
+
     pub fn drawBox(self: *Context, rect: Rect, color: Color) void {
         self.drawRect(Rect{ .x = rect.x + 1, .y = rect.y, .width = rect.width - 2, .height = 1 }, color);
         self.drawRect(Rect{ .x = rect.x + 1, .y = rect.y + rect.height - 1, .width = rect.width - 2, .height = 1 }, color);
@@ -674,6 +738,22 @@ pub const Context = struct {
         }
     }
 
+    pub fn textFmt(self: *Context, comptime fmt: []const u8, args: anytype) void {
+        var buf: [256]u8 = undefined;
+        const formatted = std.fmt.bufPrintZ(&buf, fmt, args) catch unreachable;
+        const w: f32 = -1;
+        self.layoutRow(1, @ptrCast(&w), @floatFromInt(textHeight(self.style.font)));
+        self.label(formatted);
+    }
+
+    pub fn textFmtColor(self: *Context, comptime fmt: []const u8, args: anytype, color: Color) void {
+        var buf: [256]u8 = undefined;
+        const formatted = std.fmt.bufPrintZ(&buf, fmt, args) catch unreachable;
+        const w: f32 = -1;
+        self.layoutRow(1, @ptrCast(&w), @floatFromInt(textHeight(self.style.font)));
+        self.labelColor(formatted, color);
+    }
+
     pub fn text(self: *Context, txt: [:0]const u8) void {
         const font = self.style.font;
         const color = self.style.colors[@intFromEnum(ColorId.text)];
@@ -705,6 +785,16 @@ pub const Context = struct {
 
     pub fn label(self: *Context, txt: [:0]const u8) void {
         self.drawControlText(txt, self.layoutNext(), .text, .{});
+    }
+
+    pub fn labelColor(self: *Context, txt: [:0]const u8, color: Color) void {
+        const r = self.layoutNext();
+        const font = self.style.font;
+        const th = textHeight(font);
+        self.pushClipRect(r);
+        const pos = Vec2{ .x = r.x + @as(f32, @floatFromInt(self.style.padding)), .y = r.y + (r.height - @as(f32, @floatFromInt(th))) / 2 };
+        self.drawText(font, txt.ptr, -1, pos, color);
+        self.popClipRect();
     }
 
     pub fn buttonEx(self: *Context, lbl: ?[:0]const u8, icon: ?IconId, opt: Options) Result {
@@ -782,7 +872,7 @@ pub const Context = struct {
             const textw = textWidth(font, @ptrCast(&buf[0]), -1);
             const texth = textHeight(font);
             const ofx = r.width - @as(f32, @floatFromInt(self.style.padding)) - @as(f32, @floatFromInt(textw)) - 1;
-            const textx = r.x + @min(@as(f32, @floatFromInt(ofx)), @as(f32, @floatFromInt(self.style.padding)));
+            const textx = r.x + @min(ofx, @as(f32, @floatFromInt(self.style.padding)));
             const texty = r.y + (r.height - @as(f32, @floatFromInt(texth))) / 2;
             self.pushClipRect(r);
             self.drawText(font, @ptrCast(&buf[0]), -1, Vec2{ .x = textx, .y = texty }, color);
@@ -871,6 +961,119 @@ pub const Context = struct {
 
     pub fn number(self: *Context, value: *Real, step: Real) Result {
         return self.numberEx(value, step, "{d:.2}", .{ .align_center = true });
+    }
+
+    pub fn colorPicker(self: *Context, color: *Color) Result {
+        var res = Result{};
+
+        const id = self.getId(@as([*]const u8, @ptrCast(color)), @sizeOf(*Color));
+        const saved_y = self.getLayout().size.y;
+        self.getLayout().size.y = 150;
+        defer self.getLayout().size.y = saved_y;
+
+        const r = self.layoutNext();
+        const hue_w: f32 = 16.0;
+        const spacing: f32 = 4.0;
+        const hex_h: f32 = 20.0;
+        const bottom_gap: f32 = 4.0;
+        const sv_size = r.height - hex_h - bottom_gap;
+
+        const sv_rect = Rect{ .x = r.x, .y = r.y, .width = sv_size, .height = sv_size };
+        const hue_rect = Rect{ .x = sv_rect.x + sv_rect.width + spacing, .y = r.y, .width = hue_w, .height = sv_size };
+        const hex_rect = Rect{ .x = r.x, .y = r.y + sv_size + bottom_gap, .width = r.width, .height = hex_h };
+
+        const hsv = rgbToHsv(color.*);
+
+        // --- SV square ---
+        const hue_rgb = hsvToRgb(hsv.h, 1.0, 1.0);
+        const white = Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
+        const black = Color{ .r = 0, .g = 0, .b = 0, .a = 255 };
+        self.pushClipRect(sv_rect);
+        self.drawRectGradient(sv_rect, white, hue_rgb, black, black);
+        self.popClipRect();
+
+        // SV cursor
+        const sv_cx = sv_rect.x + hsv.s * sv_rect.width;
+        const sv_cy = sv_rect.y + (1.0 - hsv.v) * sv_rect.height;
+        const cs: f32 = 4.0;
+        const cursor_col = if (hsv.v > 0.6) black else white;
+        self.drawRect(Rect{ .x = sv_cx - cs, .y = sv_cy - 1, .width = cs * 2, .height = 2 }, cursor_col);
+        self.drawRect(Rect{ .x = sv_cx - 1, .y = sv_cy - cs, .width = 2, .height = cs * 2 }, cursor_col);
+
+        // SV interaction
+        self.updateControl(id, sv_rect, .{});
+        const mouse_over_sv = rectOverlapsVec2(sv_rect, self.mouse_pos);
+        const dragging_sv = self.focus == id and self.mouse_down.onlyLeft();
+        if (dragging_sv or (self.mouse_pressed.onlyLeft() and mouse_over_sv)) {
+            if (self.mouse_pressed.onlyLeft() and mouse_over_sv) self.setFocus(id);
+            const mx = clamp((self.mouse_pos.x - sv_rect.x) / sv_rect.width, 0, 1);
+            const my = clamp((self.mouse_pos.y - sv_rect.y) / sv_rect.height, 0, 1);
+            color.* = hsvToRgb(hsv.h, mx, 1.0 - my);
+            color.a = 255;
+            res.change = true;
+            res.active = dragging_sv;
+        }
+
+        // --- Hue bar ---
+        self.pushClipRect(hue_rect);
+        const hue_segments: usize = 12;
+        const seg_h = hue_rect.height / @as(f32, @floatFromInt(hue_segments));
+        var i: usize = 0;
+        while (i < hue_segments) : (i += 1) {
+            const h0 = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(hue_segments)) * 360.0;
+            const h1 = @as(f32, @floatFromInt(i + 1)) / @as(f32, @floatFromInt(hue_segments)) * 360.0;
+            const c0 = hsvToRgb(h0, 1.0, 1.0);
+            const c1 = hsvToRgb(h1, 1.0, 1.0);
+            const seg = Rect{ .x = hue_rect.x, .y = hue_rect.y + @as(f32, @floatFromInt(i)) * seg_h, .width = hue_rect.width, .height = seg_h + 1 };
+            self.drawRectGradient(seg, c0, c0, c1, c1);
+        }
+        self.popClipRect();
+
+        // Hue cursor
+        const hue_cy = hue_rect.y + (hsv.h / 360.0) * hue_rect.height;
+        self.drawRect(Rect{ .x = hue_rect.x - 1, .y = hue_cy - 2, .width = hue_rect.width + 2, .height = 4 }, white);
+
+        // Hue interaction
+        const hue_hover_id = id +% 1;
+        self.updateControl(hue_hover_id, hue_rect, .{});
+        const mouse_over_hue = rectOverlapsVec2(hue_rect, self.mouse_pos);
+        const dragging_hue = self.focus == hue_hover_id and self.mouse_down.onlyLeft();
+        if (dragging_hue or (self.mouse_pressed.onlyLeft() and mouse_over_hue)) {
+            if (self.mouse_pressed.onlyLeft() and mouse_over_hue) self.setFocus(hue_hover_id);
+            const h = @mod(clamp((self.mouse_pos.y - hue_rect.y) / hue_rect.height, 0, 1) * 360.0, 360.0);
+            color.* = hsvToRgb(h, hsv.s, hsv.v);
+            color.a = 255;
+            res.change = true;
+            res.active = dragging_hue;
+        }
+
+        // --- Hex textbox ---
+        const hex_id = id +% 2;
+        const hex_focus = self.focus == hex_id;
+
+        if (self.color_edit_id != id) {
+            self.color_edit_id = id;
+            _ = std.fmt.bufPrint(&self.color_edit_buf, "{X:0>2}{X:0>2}{X:0>2}", .{ color.r, color.g, color.b }) catch {};
+        }
+
+        const hex_res = self.textboxRaw(&self.color_edit_buf, 7, hex_id, hex_rect, .{});
+
+        const hex_lost_focus = hex_focus and self.focus != hex_id;
+        if (hex_res.submit or hex_lost_focus) {
+            const hex_str = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(&self.color_edit_buf)), 0);
+            if (hex_str.len >= 6) {
+                const parsed = std.fmt.parseInt(u32, hex_str[0..6], 16) catch 0;
+                color.* = Color.fromRGB(parsed);
+                color.a = 255;
+                res.change = true;
+            }
+        }
+
+        if (self.focus != hex_id) {
+            _ = std.fmt.bufPrint(&self.color_edit_buf, "{X:0>2}{X:0>2}{X:0>2}", .{ color.r, color.g, color.b }) catch {};
+        }
+
+        return res;
     }
 
     pub fn headerEx(self: *Context, lbl: [:0]const u8, opt: Options) Result {
@@ -1158,7 +1361,7 @@ pub const Context = struct {
                 self.treenode_pool[@intCast(idx)] = PoolItem{ .id = 0, .last_update = 0 };
             }
         } else if (new_active) {
-            self.poolInit(&self.treenode_pool, TREENODEPOOL_SIZE, id);
+            _ = self.poolInit(&self.treenode_pool, TREENODEPOOL_SIZE, id);
         }
 
         if (istreenode != 0) {

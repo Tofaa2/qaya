@@ -10,18 +10,18 @@ pub fn main(init: std.process.Init) !void {
     var app = qaya.App.init(init);
     defer app.deinit();
 
-    try app.addPlugins(qaya.plugins.Defaults);
-    try app.addPlugin(ui.Plugin);
-    try app.addSystem(.post_init, initUI);
-    try app.addSystem(.update, updateUI);
-    try app.addSystem(.post_init, spawnPlayer);
-    try app.addSystem(.post_init, spawnEnvironmentMap);
-    try app.addSystem(.post_init, spawnGround);
-    try app.addSystem(.post_init, spawnBalls);
-    try app.addSystem(.post_init, spawnDirLight);
-    try app.addSystem(.post_init, spawnText);
-    try app.addSystem(.update, lockMouse);
-    try app.addSystem(.post_update, orbitLight);
+    app.addPlugins(qaya.plugins.Defaults);
+    app.addPlugin(ui.Plugin);
+    app.addSystem(.post_init, initUI);
+    app.addSystem(.update, updateUI);
+    app.addSystem(.post_init, spawnPlayer);
+    app.addSystem(.post_init, spawnEnvironmentMap);
+    app.addSystem(.post_init, spawnGround);
+    app.addSystem(.post_init, spawnBalls);
+    app.addSystem(.post_init, spawnDirLight);
+    app.addSystem(.post_init, spawnText);
+    app.addSystem(.update, lockMouse);
+    app.addSystem(.post_update, orbitLight);
     app.run();
 }
 
@@ -43,25 +43,26 @@ fn initUI(
 
 fn updateUI(
     ctx_res: ecs.ResMut(ui.Context),
-    lights: ecs.Query(.{ *qaya.components.Light }),
+    dev_res: ecs.ResMut(qaya.rendering.Device),
+    time_res: ecs.Res(qaya.resources.Time),
 ) void {
     const ctx = ctx_res.value;
 
     ctx.begin();
 
-    ctx.beginRoot();
-    if (!ctx.button("Toggle Light").isZero()) {
-        var it = lights.iter();
-        while (it.next()) |row| {
-            row.Light.intensity = if (row.Light.intensity > 0) 0 else 1.5;
-        }
-        std.log.info("Light toggled", .{});
-    }
-    ctx.endRoot();
-
-    if (!ctx.beginWindow("Debug", .{ .x = 10, .y = 10, .width = 300, .height = 200 }).isZero()) {
-            ctx.label("Hello Qaya UI!");
-            ctx.endWindow();
+    if (!ctx.beginWindow("Debug", .{ .x = 10, .y = 10, .width = 300, .height = 430 }).isZero()) {
+        const dev = dev_res.value;
+        const stats = dev.getStats();
+        const cpu_ms = @as(f64, @floatFromInt(stats.cpuTimeFrame)) * 1000.0 / @as(f64, @floatFromInt(stats.cpuTimerFreq));
+        const gpu_ms = @as(f64, @floatFromInt(stats.gpuTimeEnd - stats.gpuTimeBegin)) * 1000.0 / @as(f64, @floatFromInt(stats.gpuTimerFreq));
+        ctx.textFmt("Frame: {d:.1}ms ({d:.0}fps)", .{ time_res.value.delta * 1000, 1.0 / time_res.value.delta });
+        ctx.textFmt("Cpu:   {d:.2}ms", .{cpu_ms});
+        ctx.textFmt("Gpu:   {d:.2}ms", .{gpu_ms});
+        ctx.textFmt("Draw:  {}  Compute: {}  Blit: {}", .{ stats.numDraw, stats.numCompute, stats.numBlit });
+        const prim_total = stats.numPrims[0] + stats.numPrims[1] + stats.numPrims[2] + stats.numPrims[3] + stats.numPrims[4];
+        ctx.textFmt("Prims: {}", .{prim_total});
+        ctx.textFmt("GpuMem: {}MB / {}MB", .{ @divFloor(stats.gpuMemoryUsed, 1024 * 1024), @divFloor(stats.gpuMemoryMax, 1024 * 1024) });
+        ctx.endWindow();
     }
 
     ctx.end();

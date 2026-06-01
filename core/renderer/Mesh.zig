@@ -6,6 +6,8 @@ const math = @import("math");
 const vertex_parser = @import("vertex_parser.zig");
 const vertices = @import("vertices.zig");
 
+const shapes = math.shapes;
+
 const Mesh = @This();
 
 pub const Pool = pool.PoolManaged(32, Mesh, Info, Error);
@@ -16,6 +18,7 @@ ib: bgfx.IndexBufferHandle,
 vertex_count: u32,
 index_count: u32,
 buffer_type: BufferType,
+bounds: shapes.Sphere,
 
 pub const BufferType = enum { static, dynamic };
 
@@ -67,12 +70,23 @@ fn createBuffers(comptime V: type, verts: []const V, indices: []const u16) Error
         bgfx.destroyVertexBuffer(vb);
         return error.InvalidIndexBuffer;
     }
+
+    var center = math.Vec3.zero();
+    for (verts) |v| center = math.Vec3.add(center, v.position);
+    center = math.Vec3.scale(center, 1.0 / @as(f32, @floatFromInt(verts.len)));
+    var radius: f32 = 0;
+    for (verts) |v| {
+        const d = math.Vec3.distance(center, v.position);
+        if (d > radius) radius = d;
+    }
+
     return .{
         .vb = vb,
         .ib = ib,
         .vertex_count = @intCast(verts.len),
         .index_count = @intCast(indices.len),
         .buffer_type = .static,
+        .bounds = .{ .center = center, .radius = radius },
     };
 }
 

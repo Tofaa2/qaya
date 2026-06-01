@@ -226,14 +226,14 @@ pub const AABB = struct {
 
     pub fn getCorners(self: *const AABB) [8]Vec3 {
         return .{
-            Vec3.new(self.min.x, self.min.y, self.min.z),
-            Vec3.new(self.max.x, self.min.y, self.min.z),
-            Vec3.new(self.min.x, self.max.y, self.min.z),
-            Vec3.new(self.max.x, self.max.y, self.min.z),
-            Vec3.new(self.min.x, self.min.y, self.max.z),
-            Vec3.new(self.max.x, self.min.y, self.max.z),
-            Vec3.new(self.min.x, self.max.y, self.max.z),
-            Vec3.new(self.max.x, self.max.y, self.max.z),
+            Vec3.init(self.min.x, self.min.y, self.min.z),
+            Vec3.init(self.max.x, self.min.y, self.min.z),
+            Vec3.init(self.min.x, self.max.y, self.min.z),
+            Vec3.init(self.max.x, self.max.y, self.min.z),
+            Vec3.init(self.min.x, self.min.y, self.max.z),
+            Vec3.init(self.max.x, self.min.y, self.max.z),
+            Vec3.init(self.min.x, self.max.y, self.max.z),
+            Vec3.init(self.max.x, self.max.y, self.max.z),
         };
     }
 };
@@ -306,11 +306,16 @@ pub const Plane = struct {
     distance: f32,
 
     pub fn new(normal: Vec3, distance: f32) Plane {
-        return .{ .normal = normal.normalize(), .distance = distance };
+        const len = normal.length();
+        if (len < 0.0001) return .{ .normal = Vec3.zero(), .distance = 0 };
+        return .{ .normal = Vec3.scale(normal, 1.0 / len), .distance = distance / len };
     }
 
     pub fn fromPointNormal(point: Vec3, normal: Vec3) Plane {
-        return .{ .normal = normal.normalize(), .distance = Vec3.dot(normal, point) };
+        const len = normal.length();
+        if (len < 0.0001) return .{ .normal = Vec3.zero(), .distance = 0 };
+        const n = Vec3.scale(normal, 1.0 / len);
+        return .{ .normal = n, .distance = Vec3.dot(n, point) };
     }
 
     pub fn fromPoints(a: Vec3, b: Vec3, c: Vec3) Plane {
@@ -331,16 +336,23 @@ pub const Frustum = struct {
     planes: [6]Plane,
 
     pub fn fromMatrices(view: Mat4, proj: Mat4) Frustum {
-        const vp = Mat4.mul(proj, view);
+        const vp = Mat4.mul(view, proj);
+        const m = vp.m;
 
         return .{
             .planes = .{
-                Plane.new(Vec3.new(vp.m[3] + vp.m[0], vp.m[7] + vp.m[4], vp.m[11] + vp.m[8]), vp.m[15] + vp.m[12]),
-                Plane.new(Vec3.new(vp.m[3] - vp.m[0], vp.m[7] - vp.m[4], vp.m[11] - vp.m[8]), vp.m[15] - vp.m[12]),
-                Plane.new(Vec3.new(vp.m[3] + vp.m[1], vp.m[7] + vp.m[5], vp.m[11] + vp.m[9]), vp.m[15] + vp.m[13]),
-                Plane.new(Vec3.new(vp.m[3] - vp.m[1], vp.m[7] - vp.m[5], vp.m[11] - vp.m[9]), vp.m[15] - vp.m[13]),
-                Plane.new(Vec3.new(vp.m[3] + vp.m[2], vp.m[7] + vp.m[6], vp.m[11] + vp.m[10]), vp.m[15] + vp.m[14]),
-                Plane.new(Vec3.new(vp.m[3] - vp.m[2], vp.m[7] - vp.m[6], vp.m[11] - vp.m[10]), vp.m[15] - vp.m[14]),
+                // left:   x >= -w  → x + w >= 0  → dot(P, row0+row3) >= 0
+                Plane.new(Vec3.init(m[0] + m[12], m[1] + m[13], m[2] + m[14]), -(m[3] + m[15])),
+                // right:  x <=  w  → w - x >= 0  → dot(P, row3-row0) >= 0
+                Plane.new(Vec3.init(m[12] - m[0], m[13] - m[1], m[14] - m[2]), -(m[15] - m[3])),
+                // bottom: y >= -w  → y + w >= 0  → dot(P, row1+row3) >= 0
+                Plane.new(Vec3.init(m[4] + m[12], m[5] + m[13], m[6] + m[14]), -(m[7] + m[15])),
+                // top:    y <=  w  → w - y >= 0  → dot(P, row3-row1) >= 0
+                Plane.new(Vec3.init(m[12] - m[4], m[13] - m[5], m[14] - m[6]), -(m[15] - m[7])),
+                // near:   z >= -w  → z + w >= 0  → dot(P, row2+row3) >= 0
+                Plane.new(Vec3.init(m[8] + m[12], m[9] + m[13], m[10] + m[14]), -(m[11] + m[15])),
+                // far:    z <=  w  → w - z >= 0  → dot(P, row3-row2) >= 0
+                Plane.new(Vec3.init(m[12] - m[8], m[13] - m[9], m[14] - m[10]), -(m[15] - m[11])),
             },
         };
     }

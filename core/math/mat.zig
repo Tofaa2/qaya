@@ -39,9 +39,11 @@ pub const Mat4 = struct {
         var result: [16]f32 = undefined;
 
         inline for (0..4) |row| {
-            const row_simd = @as(SimdVec4, a.m[row * 4 .. row * 4 + 4].*);
+            const row_ptr: *const [4]f32 = @ptrCast(&a.m[row * 4]);
+            const row_simd: SimdVec4 = row_ptr.*;
             inline for (0..4) |col| {
-                const col_simd = @as(SimdVec4, b.m[col..16 :4].*);
+                const col_ptr: *const [4]f32 = @ptrCast(&b.m[col]);
+                const col_simd: SimdVec4 = col_ptr.*;
                 result[row * 4 + col] = @reduce(.Add, row_simd * col_simd);
             }
         }
@@ -53,9 +55,9 @@ pub const Mat4 = struct {
         const simd = v.toSimd();
         var result: [4]f32 = undefined;
 
-        for (0..4) |row| {
-            const row_simd = @as(SimdVec4, m.m[row * 4 .. row * 4 + 4].*);
-            result[row] = @reduce(.Add, simd * row_simd);
+        for (0..4) |col| {
+            const col_vec: SimdVec4 = .{ m.m[col], m.m[4 + col], m.m[8 + col], m.m[12 + col] };
+            result[col] = @reduce(.Add, simd * col_vec);
         }
 
         return Vec4.fromArray(result);

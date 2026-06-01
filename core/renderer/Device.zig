@@ -61,7 +61,7 @@ pub fn init(config: Config) !RenderDevice {
     if (!bgfx.init(&bx_init)) return error.BgfxInitFailed;
 
     if (config.debug) {
-        // bgfx.setDebug(bgfx.DebugFlags_Stats);
+        bgfx.setDebug(bgfx.DebugFlags_Profiler);
         @import("bgfx").debugdraw.init();
     }
 
@@ -79,6 +79,10 @@ pub fn deinit(self: *RenderDevice) void {
         @import("bgfx").debugdraw.deinit();
     }
     bgfx.shutdown();
+}
+
+pub fn getStats(_: *const RenderDevice) *const bgfx.Stats {
+    return @ptrCast(bgfx.getStats());
 }
 
 pub fn frame(self: *const RenderDevice) void {

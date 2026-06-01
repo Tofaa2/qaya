@@ -51,6 +51,9 @@ pub fn system(
             .rect => |r| {
                 drawRect(&enc, &layout, r.rect, r.color, view_id, program.handle);
             },
+            .rect_gradient => |rg| {
+                drawRectGradient(&enc, &layout, rg.rect, rg.c0, rg.c1, rg.c2, rg.c3, view_id, program.handle);
+            },
             .text => |t| {
                 renderer.Text.renderText(
                     enc,
@@ -116,6 +119,43 @@ fn drawRect(
     verts[1] = .{ .position = .init(x1, y0, 0), .color0 = color };
     verts[2] = .{ .position = .init(x1, y1, 0), .color0 = color };
     verts[3] = .{ .position = .init(x0, y1, 0), .color0 = color };
+
+    @memcpy(indices[0..6], &[_]u16{ 0, 1, 2, 0, 2, 3 });
+
+    enc.setTransientVertexBuffer(0, &tvb, 0, 4);
+    enc.setTransientIndexBuffer(&tib, 0, 6);
+    const flags = bgfx.StateFlags_WriteRgb | bgfx.StateFlags_WriteA | bgfx.StateFlags_Msaa | bgfx.StateFlags_DepthTestAlways;
+    enc.setState(flags, 0);
+    enc.submit(view_id, program, 0, 0xff);
+}
+
+fn drawRectGradient(
+    enc: *Encoder,
+    layout: *const bgfx.VertexLayout,
+    rect: math.Rect(f32),
+    c0: math.Color,
+    c1: math.Color,
+    c2: math.Color,
+    c3: math.Color,
+    view_id: u16,
+    program: bgfx.ProgramHandle,
+) void {
+    const x0 = rect.x;
+    const y0 = rect.y;
+    const x1 = rect.x + rect.width;
+    const y1 = rect.y + rect.height;
+
+    var tvb: bgfx.TransientVertexBuffer = undefined;
+    var tib: bgfx.TransientIndexBuffer = undefined;
+    if (!bgfx.allocTransientBuffers(&tvb, layout, 4, &tib, 6, false)) return;
+
+    const verts: [*]vertices.PosColor = @ptrCast(@alignCast(tvb.data));
+    const indices: [*]u16 = @ptrCast(@alignCast(tib.data));
+
+    verts[0] = .{ .position = .init(x0, y0, 0), .color0 = c0 };
+    verts[1] = .{ .position = .init(x1, y0, 0), .color0 = c1 };
+    verts[2] = .{ .position = .init(x1, y1, 0), .color0 = c2 };
+    verts[3] = .{ .position = .init(x0, y1, 0), .color0 = c3 };
 
     @memcpy(indices[0..6], &[_]u16{ 0, 1, 2, 0, 2, 3 });
 
