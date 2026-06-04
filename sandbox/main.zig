@@ -3,6 +3,7 @@ const qaya = @import("app-sdk");
 const ecs = qaya.ecs;
 const math = qaya.math;
 const ui = @import("ui");
+const editor = @import("editor");
 
 pub const std_options = qaya.default_options;
 
@@ -12,6 +13,7 @@ pub fn main(init: std.process.Init) !void {
 
     app.addPlugins(qaya.plugins.Defaults);
     app.addPlugin(ui.Plugin);
+    app.addPlugin(editor.Plugin);
     app.addSystem(.post_init, initUI);
     app.addSystem(.update, updateUI);
     app.addSystem(.post_init, spawnPlayer);
@@ -68,10 +70,18 @@ fn updateUI(
     ctx.end();
 }
 
+fn addName(world: *ecs.World, entity: ecs.Entity, name: []const u8) void {
+    var buf: [64]u8 = undefined;
+    const len = @min(name.len, buf.len);
+    @memcpy(buf[0..len], name[0..len]);
+    world.addComponent(entity, editor.EditorName, .{ .value = buf, .len = len }) catch {};
+}
+
 fn spawnPlayer(world: *ecs.World) !void {
-    _ = try world.spawn(qaya.bundles.CameraBundle{
+    const e = try world.spawn(qaya.bundles.CameraBundle{
         .camera = qaya.components.Camera.fps(.init(0, 4, 12), .zero(), 16.0 / 9.0),
     });
+    addName(world, e, "Camera");
 }
 
 fn spawnEnvironmentMap(
@@ -104,10 +114,11 @@ fn spawnGround(
         .roughness = 0.95,
         .metallic = 0.0,
     } });
-    _ = try world.spawn(qaya.bundles.PbrBundle{
+    const e = try world.spawn(qaya.bundles.PbrBundle{
         .mesh_component = .{ .value = mesh, .material = mat },
         .transform = .{ .position = .init(0, 0, 0) },
     });
+    addName(world, e, "Ground");
 }
 
 const BallConfig = struct {
@@ -150,22 +161,24 @@ fn spawnBalls(
             .metallic = ball.metallic,
             .roughness = ball.roughness,
         } });
-        _ = try world.spawn(qaya.bundles.PbrBundle{
+        const e = try world.spawn(qaya.bundles.PbrBundle{
             .mesh_component = .{ .value = mesh, .material = mat },
             .transform = .{ .position = .init(x, 0.55, 0) },
         });
+        addName(world, e, ball.name);
         std.log.info("Spawned ball: {s} at x={d:.1}", .{ ball.name, x });
     }
 }
 
 fn spawnDirLight(world: *ecs.World) !void {
-    _ = try world.spawn(.{
+    const e = try world.spawn(.{
         qaya.components.Light{
             .direction = .init(-1, -2, -1),
             .color = math.Color.white,
             .intensity = 1.5,
         },
     });
+    addName(world, e, "Dir Light");
 }
 
 var orbit_angle: f32 = 0.0;
@@ -230,7 +243,7 @@ fn spawnText(
     const text_bytes = "Hello Qaya!";
     var buf: [256]u8 = undefined;
     @memcpy(buf[0..text_bytes.len], text_bytes);
-    _ = try world.spawn(.{
+    const e = try world.spawn(.{
         qaya.components.Text{
             .value = buf,
             .len = text_bytes.len,
@@ -240,5 +253,6 @@ fn spawnText(
         },
         qaya.components.Transform{ .position = .init(240, 40, 0) },
     });
+    addName(world, e, "Hello Text");
     std.log.info("spawnText: done", .{});
 }

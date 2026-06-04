@@ -5,6 +5,7 @@ const pool = @import("pool");
 const math = @import("math");
 const vertex_parser = @import("vertex_parser.zig");
 const vertices = @import("vertices.zig");
+const obj_loader = @import("loader/obj.zig");
 
 const shapes = math.shapes;
 
@@ -26,6 +27,9 @@ pub const Error = error{
     InvalidIndexBuffer,
     InvalidVertexBuffer,
     OutOfMemory,
+    FileNotFound,
+    InvalidFormat,
+    UnsupportedFace,
 };
 
 pub const Info = union(enum) {
@@ -37,6 +41,7 @@ pub const Info = union(enum) {
     lit_quad: struct { width: f32 = 1.0, height: f32 = 1.0 },
     lit_sphere: struct { radius: f32 = 0.5, segments: u32 = 16 },
     cylinder: struct { radius: f32 = 0.5, height: f32 = 1.0, segments: u32 = 16 },
+    file: struct { path: []const u8 },
 };
 
 pub const Vertex = vertices.PosColor;
@@ -51,7 +56,19 @@ pub fn init(info: *const Info) Error!Mesh {
         inline .lit_quad => |q| generateLitQuad(q.width, q.height),
         inline .lit_sphere => |s| generateLitSphere(s.radius, s.segments),
         inline .cylinder => |c| generateCylinder(c.radius, c.height, c.segments),
+        inline .file => |f| loadFromFile(f.path),
     };
+}
+
+fn loadFromFile(path: []const u8) Error!Mesh {
+    const allocator = std.heap.page_allocator;
+    var parser = try obj_loader.Parser.init(allocator, path);
+    defer parser.deinit();
+
+    var data = try parser.toMesh();
+    defer data.deinit(allocator);
+
+    return createBuffers(vertices.PosNormalTex, data.vertices, data.indices);
 }
 
 pub fn deinit(self: *Mesh) void {

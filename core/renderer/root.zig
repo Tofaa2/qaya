@@ -21,3 +21,6 @@ pub const Skybox = @import("Skybox.zig");
 pub const EnvironmentMap = Skybox.EnvironmentMap;
 pub const Font = @import("Font.zig");
 pub const Text = @import("Text.zig");
+pub const loader = struct {
+    pub const obj = @import("loader/obj.zig");
+};

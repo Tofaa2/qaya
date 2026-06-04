@@ -14,16 +14,27 @@
         zig
         zls        
         lldb
-        # X11
         
+        # X11        
         xorg.libX11
         xorg.libXrandr
+        xorg.libXcursor
+        xorg.libXext
+        xorg.libXi
+
         # Wayland bullshit
         wayland
         wayland-protocols
         wayland-scanner
         pkg-config
         libxkbcommon 
+
+        # Graphics
+        vulkan-loader
+        vulkan-headers
+        mesa                  # provides libEGL.so.1
+        libGL
+
       ];
     };
   };

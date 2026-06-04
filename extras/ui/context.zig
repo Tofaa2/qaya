@@ -894,7 +894,7 @@ pub const Context = struct {
         return self.textboxEx(buf, bufsz, .{});
     }
 
-    pub fn sliderEx(self: *Context, value: *Real, low: Real, high: Real, step: Real, fmt: [:0]const u8, opt: Options) Result {
+    pub fn sliderEx(self: *Context, value: *Real, low: Real, high: Real, step: Real, comptime fmt: [:0]const u8, opt: Options) Result {
         var res = Result{};
         const last = value.*;
         var v = last;
@@ -927,8 +927,10 @@ pub const Context = struct {
         const x = (v - low) * (base.width - w) / (high - low);
         const thumb = Rect{ .x = base.x + x, .y = base.y, .width = w, .height = base.height };
         self.drawControlFrame(id, thumb, .button, opt);
-        const buf = std.fmt.bufPrint(&[_]u8{undefined} ** MAX_FMT, fmt, .{v}) catch "?";
-        self.drawControlText(@ptrCast(buf.ptr), base, .text, opt);
+        var slider_buf: [MAX_FMT + 1]u8 = undefined;
+        const slider_slice = std.fmt.bufPrint(slider_buf[0..MAX_FMT], fmt, .{v}) catch slider_buf[0..1];
+        slider_slice[slider_slice.len] = 0;
+        self.drawControlText(slider_buf[0..slider_slice.len :0], base, .text, opt);
 
         return res;
     }
@@ -937,7 +939,7 @@ pub const Context = struct {
         return self.sliderEx(value, low, high, 0, "{d:.2}", .{ .align_center = true });
     }
 
-    pub fn numberEx(self: *Context, value: *Real, step: Real, fmt: [:0]const u8, opt: Options) Result {
+    pub fn numberEx(self: *Context, value: *Real, step: Real, comptime fmt: [:0]const u8, opt: Options) Result {
         var res = Result{};
         const id = self.getId(@as([*]const u8, @ptrCast(&value)), @sizeOf(*Real));
         const base = self.layoutNext();
@@ -953,8 +955,10 @@ pub const Context = struct {
         if (value.* != last) res.change = true;
 
         self.drawControlFrame(id, base, .base, opt);
-        const buf = std.fmt.bufPrint(&[_]u8{undefined} ** MAX_FMT, fmt, .{value.*}) catch "?";
-        self.drawControlText(@ptrCast(buf.ptr), base, .text, opt);
+        var number_buf: [MAX_FMT + 1]u8 = undefined;
+        const number_slice = std.fmt.bufPrint(number_buf[0..MAX_FMT], fmt, .{value.*}) catch number_buf[0..1];
+        number_slice[number_slice.len] = 0;
+        self.drawControlText(number_buf[0..number_slice.len :0], base, .text, opt);
 
         return res;
     }

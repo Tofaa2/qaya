@@ -141,6 +141,21 @@ pub fn build(b: *std.Build) void {
     ui.addImport("math", math);
     ui.addImport("app-sdk", app_sdk);
 
+    const editor = createModule(.{
+        .b = b,
+        .target = target,
+        .optimize = optimize,
+        .name = "editor",
+        .path = "extras/editor/root.zig",
+        .test_step = test_step,
+        .docs_step = docs_step,
+    });
+    editor.addImport("ecs", ecs);
+    editor.addImport("app-sdk", app_sdk);
+    editor.addImport("ui", ui);
+    editor.addImport("renderer", renderer);
+    editor.addImport("math", math);
+
     const sandbox = b.addExecutable(.{
         .name = "sandbox",
         .use_llvm = true,
@@ -152,6 +167,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "window", .module = window.root_module },
             .{ .name = "app-sdk", .module = app_sdk },
             .{ .name = "ui", .module = ui },
+            .{ .name = "editor", .module = editor },
         } }),
     });
     sandbox.root_module.linkLibrary(window);
